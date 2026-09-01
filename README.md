@@ -31,8 +31,13 @@ Du brauchst dafür **keinen Computer mit Terminal** – Handy oder Tablet reicht
 ### 1. Datenbank anlegen
 
 Im Vercel-Projekt auf **Storage → Create Database → Postgres** (Neon).
-Vercel verbindet die Datenbank automatisch mit dem Projekt und setzt dabei
-die Variable `DATABASE_URL`. Du musst sie **nicht** selbst eintragen.
+Wichtig: Beim Anlegen **dieses Projekt auswählen** – erst dadurch trägt Vercel
+die Zugangsdaten ein. Wenn die Datenbank schon existiert, geht das über
+*Storage → Datenbank öffnen → Connect Project* nach.
+
+Wie die Variable heißt, ist egal: Das Projekt akzeptiert `DATABASE_URL`,
+`POSTGRES_PRISMA_URL` und `POSTGRES_URL`. Fehlt jede davon, sagt das Build-Log
+im Klartext, was zu tun ist.
 
 ### 2. Passwörter eintragen
 
@@ -101,7 +106,7 @@ Der Admin-Bereich liegt unter [http://localhost:3000/admin](http://localhost:300
 | Befehl | Was passiert |
 | --- | --- |
 | `npm run dev` | Entwicklungsserver mit automatischem Neuladen |
-| `npm run build` | Tabellen anlegen, Produkte einfüllen, Website bauen (das macht auch Vercel) |
+| `npm run build` | Datenbank vorbereiten und Website bauen (das macht auch Vercel) |
 | `npm start` | Die gebaute Version starten |
 | `npm run setup` | Datenbank anlegen **und** Produkte einfüllen |
 | `npm run db:push` | Datenbank an das Schema anpassen |
