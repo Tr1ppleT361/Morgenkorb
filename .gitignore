@@ -1,0 +1,21 @@
+# Abhängigkeiten
+/node_modules
+
+# Next.js Build-Ordner
+/.next
+/out
+
+# Umgebungsvariablen (enthalten Passwörter!)
+.env
+.env.local
+
+# SQLite-Datenbank
+*.db
+*.db-journal
+prisma/*.db
+prisma/*.db-journal
+
+# Betriebssystem
+.DS_Store
+*.log
+next-env.d.ts

@@ -1,0 +1,66 @@
+// Prisma-Schema für Morgenkorb.
+//
+// Wechsel auf Postgres später:
+//   1. provider unten auf "postgresql" ändern
+//   2. DATABASE_URL in .env auf die Postgres-URL setzen
+//   3. `npx prisma migrate dev` (oder `prisma db push`) ausführen
+// Wir benutzen absichtlich nur Datentypen, die SQLite UND Postgres können
+// (z. B. String statt enum), damit der Umzug einfach bleibt.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Ein Produkt aus dem Sortiment.
+model Product {
+  id        Int     @id @default(autoincrement())
+  name      String  @unique
+  /// Preis in CENT (Integer!), niemals als Kommazahl speichern.
+  preis     Int
+  kategorie String
+  bildUrl   String?
+  aktiv     Boolean @default(true)
+
+  items OrderItem[]
+
+  @@index([kategorie])
+}
+
+/// Eine Bestellung von einer Person für einen Tag.
+model Order {
+  id            String   @id @default(cuid()) // zufällige ID -> Bestätigungslink ist nicht erratbar
+  name          String
+  klasse        String
+  notiz         String?
+  erstelltAm    DateTime @default(now())
+  bezahlt       Boolean  @default(false)
+  /// true = Tag wurde abgeschlossen, Bestellung liegt im Archiv
+  abgeschlossen Boolean  @default(false)
+
+  items OrderItem[]
+
+  @@index([abgeschlossen])
+  @@index([erstelltAm])
+}
+
+/// Eine Zeile innerhalb einer Bestellung ("3x Cola").
+model OrderItem {
+  id        Int    @id @default(autoincrement())
+  orderId   String
+  productId Int
+  menge     Int
+  /// Preis in Cent zum Zeitpunkt der Bestellung – so bleibt die alte
+  /// Bestellung korrekt, auch wenn sich der Produktpreis später ändert.
+  preisBeimKauf Int
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+}
