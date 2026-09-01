@@ -1,104 +1,217 @@
 /**
- * Admin-Startseite: die Einkaufsliste.
- *
- * Alle offenen Bestellungen werden pro Produkt zusammengezählt, damit du
- * bei Rewe nur eine Liste abarbeiten musst ("6x Hanuta, 3x Cola 0,5l").
+ * Admin-Übersicht: alles Wichtige auf einen Blick.
+ * Von hier springt man in die einzelnen Bereiche.
  */
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { euro } from "@/lib/geld";
-import { config } from "@/config";
-import { Einkaufsliste } from "./Einkaufsliste";
-import { TagAbschliessenButton } from "./TagAbschliessenButton";
+import { euro, summeCent } from "@/lib/geld";
+import { bestellschlussText, bestellungenOffen } from "@/lib/bestellschluss";
+import { STATUS_REIHE, statusText, STATUS_KLASSEN } from "@/lib/status";
+import { adminIstEingerichtet } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function EinkaufslistenSeite() {
-  // Alle Positionen aus noch nicht abgeschlossenen Bestellungen
-  const positionen = await prisma.orderItem.findMany({
-    where: { order: { abgeschlossen: false } },
-    include: { product: true },
-  });
-
-  const bestellungenAnzahl = await prisma.order.count({
+export default async function AdminUebersicht() {
+  // Alles, was noch nicht im Archiv liegt = "der aktuelle Tag"
+  const offene = await prisma.order.findMany({
     where: { abgeschlossen: false },
+    include: { items: true },
+    orderBy: { erstelltAm: "desc" },
   });
 
-  // Pro Produkt zusammenzählen
-  const map = new Map<
-    number,
-    { name: string; kategorie: string; menge: number; summe: number }
-  >();
+  const [produkteAktiv, produkteGesamt, kunden, archivAnzahl] =
+    await Promise.all([
+      prisma.product.count({ where: { aktiv: true } }),
+      prisma.product.count(),
+      prisma.user.count(),
+      prisma.order.count({ where: { abgeschlossen: true } }),
+    ]);
 
-  for (const p of positionen) {
-    const vorher = map.get(p.productId);
-    const menge = (vorher?.menge ?? 0) + p.menge;
-    map.set(p.productId, {
-      name: p.product.name,
-      kategorie: p.product.kategorie,
-      menge,
-      summe: (vorher?.summe ?? 0) + p.menge * p.preisBeimKauf,
-    });
-  }
+  const gesamt = offene.reduce((s, b) => s + summeCent(b.items), 0);
+  const bezahlt = offene
+    .filter((b) => b.bezahlt)
+    .reduce((s, b) => s + summeCent(b.items), 0);
+  const artikel = offene.reduce(
+    (s, b) => s + b.items.reduce((t, i) => t + i.menge, 0),
+    0,
+  );
 
-  // Nach Kategorie gruppieren – so läuft man im Laden nicht dreimal im Kreis
-  type Zeile = { id: number; name: string; menge: number; summe: number };
-  const nachKategorie = new Map<string, Zeile[]>();
-
-  for (const [id, w] of map) {
-    const liste = nachKategorie.get(w.kategorie) ?? [];
-    liste.push({ id, name: w.name, menge: w.menge, summe: w.summe });
-    nachKategorie.set(w.kategorie, liste);
-  }
-
-  const reihenfolge = [
-    ...config.kategorienReihenfolge.filter((k) => nachKategorie.has(k)),
-    ...[...nachKategorie.keys()]
-      .filter((k) => !config.kategorienReihenfolge.includes(k as never))
-      .sort((a, b) => a.localeCompare(b, "de")),
-  ];
-
-  const gruppen = reihenfolge.map((kategorie) => ({
-    kategorie,
-    zeilen: nachKategorie
-      .get(kategorie)!
-      .sort((a, b) => a.name.localeCompare(b.name, "de")),
+  // Wie viele Bestellungen stehen auf welchem Status?
+  const proStatus = STATUS_REIHE.map((status) => ({
+    status,
+    anzahl: offene.filter((b) => b.status === status).length,
   }));
 
-  const gesamt = [...map.values()].reduce((s, w) => s + w.summe, 0);
-  const artikelAnzahl = [...map.values()].reduce((s, w) => s + w.menge, 0);
+  const offenesFenster = bestellungenOffen();
 
   return (
-    <div>
-      {/* Übersichtskacheln */}
-      <div className="grid grid-cols-3 gap-2">
-        <Kachel titel="Bestellungen" wert={String(bestellungenAnzahl)} />
-        <Kachel titel="Artikel" wert={String(artikelAnzahl)} />
-        <Kachel titel="Gesamt" wert={euro(gesamt)} />
+    <div className="space-y-5">
+      {!adminIstEingerichtet() && (
+        <div className="karte border-honig/40 bg-honigHell p-4 text-sm text-ziegel">
+          <p className="font-semibold">Admin-Zugangsdaten fehlen noch</p>
+          <p className="mt-1">
+            Trage <code className="font-mono">ADMIN_EMAIL</code> und{" "}
+            <code className="font-mono">ADMIN_PASSWORT</code> in die
+            Umgebungsvariablen ein. Solange sie fehlen, kommt nach einem
+            Datenbank-Neustart niemand mehr in diesen Bereich.
+          </p>
+        </div>
+      )}
+
+      {/* Kennzahlen */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Kachel titel="Bestellungen" wert={String(offene.length)} betont />
+        <Kachel titel="Artikel" wert={String(artikel)} />
+        <Kachel titel="Umsatz heute" wert={euro(gesamt)} />
+        <Kachel
+          titel="Noch offen"
+          wert={euro(gesamt - bezahlt)}
+          warnung={gesamt - bezahlt > 0}
+        />
       </div>
 
-      {positionen.length === 0 ? (
-        <p className="karte mt-4 p-6 text-center text-leise">
-          Noch ist nichts bestellt. Schau heute Abend nochmal rein.
-        </p>
-      ) : (
-        <>
-          <Einkaufsliste gruppen={gruppen} />
-          <div className="mt-6">
-            <TagAbschliessenButton anzahl={bestellungenAnzahl} />
-          </div>
-        </>
-      )}
+      {/* Bestellfenster */}
+      <div className="karte flex items-center gap-3 p-4">
+        <span
+          className={
+            "h-3 w-3 shrink-0 rounded-full " +
+            (offenesFenster ? "bg-moos" : "bg-leise")
+          }
+        />
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">
+            {offenesFenster
+              ? "Bestellungen sind offen"
+              : "Bestellschluss ist durch"}
+          </p>
+          <p className="text-sm text-leise">
+            Täglich bis {bestellschlussText()} Uhr. Änderbar in{" "}
+            <code className="font-mono text-xs">src/config.ts</code>.
+          </p>
+        </div>
+      </div>
+
+      {/* Bestellstatus */}
+      <section>
+        <h2 className="mb-2 font-titel text-lg font-bold">Bestellstatus</h2>
+        <div className="karte divide-y divide-linie overflow-hidden">
+          {proStatus.map(({ status, anzahl }) => {
+            const t = statusText(status);
+            return (
+              <div key={status} className="flex items-center gap-3 px-4 py-3">
+                <span
+                  className={
+                    "rounded-full px-2.5 py-1 text-xs font-bold " +
+                    STATUS_KLASSEN[t.farbe]
+                  }
+                >
+                  {t.titel}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm text-leise">
+                  {t.erklaerung}
+                </span>
+                <span className="ziffern text-lg font-bold">{anzahl}</span>
+              </div>
+            );
+          })}
+        </div>
+        <Link
+          href="/admin/bestellungen"
+          className="btn-zweit mt-3 w-full text-sm"
+        >
+          Bestellungen verwalten
+        </Link>
+      </section>
+
+      {/* Schnellzugriff */}
+      <section>
+        <h2 className="mb-2 font-titel text-lg font-bold">Bereiche</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Feld
+            href="/admin/einkauf"
+            titel="Einkaufsliste"
+            text={`${artikel} Artikel zusammengezählt, zum Abhaken im Laden`}
+          />
+          <Feld
+            href="/admin/produkte"
+            titel="Produkte & Bilder"
+            text={`${produkteAktiv} von ${produkteGesamt} veröffentlicht`}
+          />
+          <Feld
+            href="/admin/kunden"
+            titel="Kunden"
+            text={`${kunden} ${kunden === 1 ? "Konto" : "Konten"} angelegt`}
+          />
+          <Feld
+            href="/admin/kasse"
+            titel="Kasse"
+            text={`${euro(bezahlt)} eingenommen, ${euro(gesamt - bezahlt)} offen`}
+          />
+          <Feld
+            href="/admin/archiv"
+            titel="Archiv"
+            text={`${archivAnzahl} abgeschlossene ${archivAnzahl === 1 ? "Bestellung" : "Bestellungen"}`}
+          />
+        </div>
+      </section>
     </div>
   );
 }
 
-function Kachel({ titel, wert }: { titel: string; wert: string }) {
+function Kachel({
+  titel,
+  wert,
+  betont = false,
+  warnung = false,
+}: {
+  titel: string;
+  wert: string;
+  betont?: boolean;
+  warnung?: boolean;
+}) {
   return (
-    <div className="karte p-3 text-center">
-      <p className="text-xs uppercase tracking-wide text-leise">
-        {titel}
+    <div className={"karte p-3 text-center " + (betont ? "border-honig/50" : "")}>
+      <p className="etikett">{titel}</p>
+      <p
+        className={
+          "mt-1 font-titel text-xl font-bold ziffern " +
+          (warnung ? "text-ziegel" : "")
+        }
+      >
+        {wert}
       </p>
-      <p className="mt-1 text-lg font-bold ziffern">{wert}</p>
     </div>
+  );
+}
+
+function Feld({
+  href,
+  titel,
+  text,
+}: {
+  href: string;
+  titel: string;
+  text: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="karte flex items-center gap-3 p-4 transition hover:border-honig hover:shadow-gehoben"
+    >
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">{titel}</p>
+        <p className="truncate text-sm text-leise">{text}</p>
+      </div>
+      <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0 text-leise" aria-hidden>
+        <path
+          d="m6 3 5 5-5 5"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+        />
+      </svg>
+    </Link>
   );
 }

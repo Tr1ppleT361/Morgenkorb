@@ -8,6 +8,7 @@
 import { prisma } from "@/lib/prisma";
 import { bestellungenOffen, bestellschlussText } from "@/lib/bestellschluss";
 import { config } from "@/config";
+import { aktuellerNutzer } from "@/lib/auth";
 
 export type Bestellposition = { productId: number; menge: number };
 
@@ -72,13 +73,20 @@ export async function bestellungAufgeben(daten: {
   if (items.length === 0)
     return { ok: false, fehler: "Die gewählten Produkte gibt es nicht mehr." };
 
-  // 4) Bestellung samt Positionen in einem Rutsch speichern
+  // 4) Wer bestellt? Wenn angemeldet, hängen wir die Bestellung ans Konto –
+  //    dann taucht sie später unter "Deine Bestellungen" auf.
+  const nutzer = await aktuellerNutzer();
+
+  // 5) Bestellung, Positionen und den ersten Statuseintrag speichern
   const bestellung = await prisma.order.create({
     data: {
       name,
       klasse,
       notiz,
+      userId: nutzer?.id ?? null,
+      status: "EINGEGANGEN",
       items: { create: items },
+      verlauf: { create: { status: "EINGEGANGEN" } },
     },
   });
 

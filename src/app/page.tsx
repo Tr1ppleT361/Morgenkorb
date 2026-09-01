@@ -14,6 +14,7 @@ import {
   minutenBisSchluss,
 } from "@/lib/bestellschluss";
 import { Bestellseite } from "@/components/Bestellseite";
+import { aktuellerNutzer } from "@/lib/auth";
 
 // Die Seite hängt von der Uhrzeit ab -> nicht statisch vorbauen,
 // sondern bei jedem Aufruf neu rendern.
@@ -30,6 +31,8 @@ export default async function Startseite() {
   const gruppen = gruppiereNachKategorie(produkte);
 
   const offen = bestellungenOffen();
+  // Angemeldet? Dann können wir Name und Klasse schon ausfüllen.
+  const nutzer = await aktuellerNutzer();
 
   return (
     <Bestellseite
@@ -37,6 +40,9 @@ export default async function Startseite() {
       offen={offen}
       schlussText={bestellschlussText()}
       minutenRest={minutenBisSchluss()}
+      nutzer={
+        nutzer && { name: nutzer.name, klasse: nutzer.klasse ?? "" }
+      }
     />
   );
 }

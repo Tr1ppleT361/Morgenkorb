@@ -2,86 +2,132 @@
 
 /**
  * Server Actions für den Admin-Bereich.
- * Jede Aktion prüft zuerst, ob man überhaupt eingeloggt ist.
+ * Jede Aktion prüft zuerst über nurAdmin(), ob wirklich ein Admin am Werk ist.
  */
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { ADMIN_COOKIE, adminToken, istAdmin, passwortStimmt } from "@/lib/auth";
+import { nurAdmin } from "@/lib/auth";
+import { istStatus } from "@/lib/status";
 
-/** Wirft einen Fehler, wenn jemand nicht eingeloggt ist. */
-async function nurAdmin() {
-  if (!(await istAdmin())) {
-    throw new Error("Nicht eingeloggt.");
-  }
-}
-
-// ---------------------------------------------------------------- Login
-
-export type LoginStatus = { fehler?: string };
-
-export async function einloggen(
-  _vorher: LoginStatus,
-  formData: FormData,
-): Promise<LoginStatus> {
-  const passwort = String(formData.get("passwort") ?? "");
-
-  if (!passwortStimmt(passwort)) {
-    // Kleine Bremse gegen wildes Durchprobieren
-    await new Promise((r) => setTimeout(r, 700));
-    return { fehler: "Falsches Passwort." };
-  }
-
-  const cookieStore = await cookies();
-  cookieStore.set(ADMIN_COOKIE, adminToken(), {
-    httpOnly: true, // per JavaScript nicht lesbar
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30, // 30 Tage eingeloggt bleiben
-  });
-
-  redirect("/admin");
-}
-
-export async function ausloggen() {
-  const cookieStore = await cookies();
-  cookieStore.delete(ADMIN_COOKIE);
-  redirect("/admin");
+/** Alle Admin-Seiten neu laden lassen. */
+function adminNeuLaden() {
+  revalidatePath("/admin");
+  revalidatePath("/admin/einkauf");
+  revalidatePath("/admin/bestellungen");
+  revalidatePath("/admin/kunden");
+  revalidatePath("/admin/kasse");
+  revalidatePath("/admin/archiv");
+  revalidatePath("/meine-bestellungen");
 }
 
 // ------------------------------------------------------------ Bestellungen
 
-/** Häkchen "bezahlt" bei einer Bestellung setzen oder entfernen. */
+/** Häkchen "bezahlt" setzen oder entfernen. */
 export async function bezahltUmschalten(orderId: string, bezahlt: boolean) {
   await nurAdmin();
   await prisma.order.update({ where: { id: orderId }, data: { bezahlt } });
-  revalidatePath("/admin/personen");
+  adminNeuLaden();
+}
+
+/**
+ * Status ändern. Die Änderung wird zusätzlich im Verlauf mitgeschrieben,
+ * damit der Kunde sehen kann, wann was passiert ist.
+ */
+export async function statusSetzen(
+  orderId: string,
+  status: string,
+  notiz?: string,
+) {
+  await nurAdmin();
+
+  if (!istStatus(status)) {
+    throw new Error(`Unbekannter Status: ${status}`);
+  }
+
+  const jetzt = new Date();
+
+  await prisma.$transaction([
+    prisma.order.update({
+      where: { id: orderId },
+      data: { status, statusAm: jetzt },
+    }),
+    prisma.orderStatus.create({
+      data: { orderId, status, am: jetzt, notiz: notiz?.trim() || null },
+    }),
+  ]);
+
+  adminNeuLaden();
+  revalidatePath(`/bestellung/${orderId}`);
+}
+
+/** Status für mehrere Bestellungen auf einmal setzen. */
+export async function statusFuerAlleSetzen(status: string) {
+  await nurAdmin();
+  if (!istStatus(status)) throw new Error(`Unbekannter Status: ${status}`);
+
+  const offene = await prisma.order.findMany({
+    where: { abgeschlossen: false, status: { not: status } },
+    select: { id: true },
+  });
+
+  const jetzt = new Date();
+  await prisma.$transaction([
+    prisma.order.updateMany({
+      where: { id: { in: offene.map((o) => o.id) } },
+      data: { status, statusAm: jetzt },
+    }),
+    prisma.orderStatus.createMany({
+      data: offene.map((o) => ({ orderId: o.id, status, am: jetzt })),
+    }),
+  ]);
+
+  adminNeuLaden();
+  return offene.length;
 }
 
 /** Eine einzelne (falsche) Bestellung löschen. */
 export async function bestellungLoeschen(orderId: string) {
   await nurAdmin();
   await prisma.order.delete({ where: { id: orderId } });
-  revalidatePath("/admin");
-  revalidatePath("/admin/personen");
+  adminNeuLaden();
 }
 
 /**
  * "Tag abschließen": alle offenen Bestellungen ins Archiv verschieben.
- * Gelöscht wird nichts – sie tauchen nur nicht mehr in der Tagesliste auf.
+ * Gelöscht wird nichts – der Kunde sieht seine Bestellung weiterhin.
+ * Wer noch nicht auf "zugestellt" steht, bekommt den Status gleich mit.
  */
 export async function tagAbschliessen() {
   await nurAdmin();
-  const ergebnis = await prisma.order.updateMany({
+
+  const offene = await prisma.order.findMany({
     where: { abgeschlossen: false },
-    data: { abgeschlossen: true },
+    select: { id: true, status: true },
   });
-  revalidatePath("/admin");
-  revalidatePath("/admin/personen");
-  revalidatePath("/admin/archiv");
-  return ergebnis.count;
+
+  const jetzt = new Date();
+  const nochNichtZugestellt = offene.filter((o) => o.status !== "ZUGESTELLT");
+
+  await prisma.$transaction([
+    prisma.order.updateMany({
+      where: { abgeschlossen: false },
+      data: { abgeschlossen: true },
+    }),
+    prisma.order.updateMany({
+      where: { id: { in: nochNichtZugestellt.map((o) => o.id) } },
+      data: { status: "ZUGESTELLT", statusAm: jetzt },
+    }),
+    prisma.orderStatus.createMany({
+      data: nochNichtZugestellt.map((o) => ({
+        orderId: o.id,
+        status: "ZUGESTELLT",
+        am: jetzt,
+      })),
+    }),
+  ]);
+
+  adminNeuLaden();
+  return offene.length;
 }
 
 // --------------------------------------------------------------- Produkte
@@ -110,6 +156,8 @@ export async function produktSpeichern(
   if (!kategorie) return { fehler: "Bitte eine Kategorie eingeben." };
   if (!Number.isFinite(preisEuro) || preisEuro <= 0)
     return { fehler: "Bitte einen gültigen Preis eingeben, z. B. 1,49." };
+  if (bildUrl && !/^https?:\/\//i.test(bildUrl))
+    return { fehler: "Die Bild-Adresse muss mit http:// oder https:// beginnen." };
 
   // Math.round verhindert Rundungsfehler: 1.49 * 100 = 148.99999...
   const preis = Math.round(preisEuro * 100);
@@ -126,18 +174,33 @@ export async function produktSpeichern(
       });
     }
   } catch {
-    return { fehler: `Es gibt schon ein Produkt mit dem Namen „${name}“.` };
+    return { fehler: `Es gibt schon ein Produkt mit dem Namen „${name}".` };
   }
 
   revalidatePath("/admin/produkte");
   revalidatePath("/");
-  return { erfolg: id ? "Gespeichert." : `„${name}“ angelegt.` };
+  return { erfolg: id ? "Gespeichert." : `„${name}" angelegt.` };
 }
 
-/** Produkt aktiv/inaktiv schalten (inaktive erscheinen nicht im Shop). */
+/** Produkt veröffentlichen bzw. verstecken. */
 export async function produktAktivUmschalten(id: number, aktiv: boolean) {
   await nurAdmin();
   await prisma.product.update({ where: { id }, data: { aktiv } });
   revalidatePath("/admin/produkte");
   revalidatePath("/");
+}
+
+/** Mehrere Produkte auf einmal veröffentlichen/verstecken. */
+export async function kategorieVeroeffentlichen(
+  kategorie: string,
+  aktiv: boolean,
+) {
+  await nurAdmin();
+  const ergebnis = await prisma.product.updateMany({
+    where: { kategorie },
+    data: { aktiv },
+  });
+  revalidatePath("/admin/produkte");
+  revalidatePath("/");
+  return ergebnis.count;
 }

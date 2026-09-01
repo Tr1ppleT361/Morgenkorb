@@ -41,14 +41,20 @@ Vercel beim Anlegen vergibt (z. B. `MorgenkorbDB_DATABASE_URL`). Das Build-Log
 schreibt in die erste Zeile, welche Variable es benutzt. Findet es gar keine,
 steht dort im Klartext, was zu tun ist.
 
-### 2. Passwörter eintragen
+### 2. Admin-Zugang eintragen
 
-**Settings → Environment Variables**, zwei Stück anlegen:
+**Settings → Environment Variables**:
 
 | Name | Wert |
 | --- | --- |
-| `ADMIN_PASSWORD` | dein Wunschpasswort für `/admin` |
-| `ADMIN_SECRET` | ein langer zufälliger Text (einfach ~40 Zeichen wild tippen) |
+| `ADMIN_EMAIL` | deine E-Mail, z. B. `du@example.com` |
+| `ADMIN_PASSWORT` | dein Wunschpasswort |
+| `ADMIN_NAME` | optional, wie du im Admin heißt |
+
+Aus diesen Angaben wird beim ersten Anmeldeversuch automatisch ein
+Admin-Konto in der Datenbank angelegt. Du musst dich also **nicht** vorher
+registrieren. Änderst du das Passwort hier später, gilt beim nächsten
+Anmelden das neue – aussperren kannst du dich nicht.
 
 ### 3. Neu deployen
 
@@ -155,6 +161,71 @@ kann niemand die Sperre umgehen.
 
 ---
 
+## Konten und Anmeldung
+
+Es gibt **ein** Login für alle – unter `/anmelden`. Ob jemand Admin ist,
+entscheidet die Rolle im Konto.
+
+**Für Mitschüler (optional):** Wer will, legt unter `/registrieren` ein Konto
+mit Name, E-Mail und Passwort an. Vorteil: Name und Klasse sind beim
+Bestellen schon ausgefüllt, und unter `/konto` sieht man alle eigenen
+Bestellungen samt Status. **Bestellen geht weiterhin auch ohne Konto** – dann
+findet man seine Bestellung nur über den Link der Bestätigungsseite.
+
+**Für dich (Admin):** Melde dich mit `ADMIN_EMAIL` und `ADMIN_PASSWORT` an
+(siehe oben). Danach ist `/admin` freigeschaltet. Die Anmeldung hält
+**30 Tage**, du musst dich also nicht ständig neu einloggen.
+
+Weitere Admins: deren E-Mail-Adressen kommagetrennt in `ADMIN_EMAILS`
+eintragen. Wer sich mit so einer Adresse registriert oder anmeldet, wird
+automatisch Admin.
+
+### Wie die Passwörter gespeichert werden
+
+Passwörter landen **nie** im Klartext in der Datenbank, sondern nur als
+scrypt-Hash mit eigenem Zufallssalz pro Konto (siehe
+`src/lib/passwort.ts`). Aus dem Hash lässt sich das Passwort nicht
+zurückrechnen.
+
+Beim Anmelden bekommt der Browser ein Cookie mit einem langen Zufallsschlüssel.
+In der Datenbank steht nur dessen Hash – wer die Datenbank liest, kann sich
+damit also nicht anmelden. Das Cookie ist `httpOnly`, JavaScript auf der
+Seite kommt nicht heran.
+
+---
+
+## Der Admin-Bereich
+
+| Reiter | Was du dort machst |
+| --- | --- |
+| **Übersicht** | Zahlen des Tages, Bestellstatus auf einen Blick, Sprung in alle Bereiche |
+| **Bestellungen** | Jede Bestellung mit Kunde, Artikeln, Betrag – und der Statuswechsel |
+| **Einkaufsliste** | Alles zusammengezählt zum Abhaken im Laden, „Tag abschließen" |
+| **Kunden** | Alle Konten mit Bestellzahl und offenem Betrag, dazu Gast-Bestellungen |
+| **Produkte** | Anlegen, bearbeiten, Bild setzen, veröffentlichen oder verstecken |
+| **Kasse** | Wer hat bezahlt, was fehlt noch – auch aus früheren Tagen |
+| **Archiv** | Abgeschlossene Bestellungen |
+
+### Bestellstatus
+
+Jede Bestellung durchläuft vier Schritte:
+
+1. **Bestellung erhalten** – ist angekommen und für morgen vorgemerkt
+2. **Wird bearbeitet** – steht auf der Einkaufsliste
+3. **Versendet** – eingekauft und eingepackt
+4. **Zugestellt** – übergeben
+
+Den Status änderst du unter *Bestellungen*: entweder pro Bestellung mit
+„Weiter zu …", per Auswahlfeld, oder für alle auf einmal über die Leiste
+oben. Jede Änderung wird mit Zeitstempel mitgeschrieben – der Kunde sieht
+den Verlauf sofort auf seiner Bestätigungsseite und unter `/konto`.
+
+„Tag abschließen" verschiebt alles ins Archiv und setzt offene Bestellungen
+auf *Zugestellt*. **Gelöscht wird nichts** – die Kunden sehen ihre
+Bestellungen weiterhin.
+
+---
+
 ## Wie läuft ein Tag ab?
 
 1. **Nachmittag/Abend** – Mitschüler öffnen `/`, legen Sachen in den Warenkorb
@@ -177,10 +248,16 @@ Kommazahlen sind bei Geld ungenau – deshalb rechnen wir überall in Cent und
 teilen erst kurz vor der Anzeige durch 100 (siehe `src/lib/geld.ts`).
 
 ```
-Product    id, name (einmalig), preis (Cent), kategorie, bildUrl?, aktiv
-Order      id, name, klasse, notiz?, erstelltAm, bezahlt, abgeschlossen
-OrderItem  id, orderId, productId, menge, preisBeimKauf (Cent)
+Product      id, name (einmalig), preis (Cent), kategorie, bildUrl?, aktiv
+Order        id, name, klasse, notiz?, erstelltAm, bezahlt, abgeschlossen,
+             userId?, status, statusAm
+OrderItem    id, orderId, productId, menge, preisBeimKauf (Cent)
+User         id, email (einmalig), name, klasse?, passwortHash, rolle
+Session      id, tokenHash, userId, laeuftAbAm
+OrderStatus  id, orderId, status, am, notiz?   (der Verlauf)
 ```
+
+`Order.userId` ist optional: Bestellungen ohne Konto funktionieren weiterhin.
 
 `preisBeimKauf` merkt sich den Preis vom Bestellzeitpunkt. Änderst du später
 den Produktpreis, bleiben alte Bestellungen trotzdem korrekt.
@@ -280,7 +357,8 @@ pm2 save
 ## Häufige Fragen
 
 **Ich habe mein Admin-Passwort vergessen.**
-`ADMIN_PASSWORD` in der `.env` ändern und den Server neu starten.
+`ADMIN_PASSWORT` in den Umgebungsvariablen ändern und neu deployen. Beim
+nächsten Anmelden gilt das neue Passwort automatisch.
 
 **Ein Produkt gibt es nicht mehr.**
 Im Admin unter *Produkte* den Schalter auf inaktiv stellen. Es verschwindet aus

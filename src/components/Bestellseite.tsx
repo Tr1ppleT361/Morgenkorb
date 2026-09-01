@@ -33,11 +33,14 @@ export function Bestellseite({
   offen,
   schlussText,
   minutenRest,
+  nutzer,
 }: {
   gruppen: Gruppe[];
   offen: boolean;
   schlussText: string;
   minutenRest: number;
+  /** Angemeldeter Nutzer – dann sind Name und Klasse schon ausgefüllt */
+  nutzer?: { name: string; klasse: string } | null;
 }) {
   const router = useRouter();
   const [suche, setSuche] = useState("");
@@ -46,8 +49,8 @@ export function Bestellseite({
   const [fehler, setFehler] = useState<string | null>(null);
   const [sendet, starteSenden] = useTransition();
 
-  const [name, setName] = useState("");
-  const [klasse, setKlasse] = useState("");
+  const [name, setName] = useState(nutzer?.name ?? "");
+  const [klasse, setKlasse] = useState(nutzer?.klasse ?? "");
   const [notiz, setNotiz] = useState("");
 
   // Warenkorb und Namen aus dem Browser-Speicher holen
@@ -55,12 +58,15 @@ export function Bestellseite({
     try {
       const roh = localStorage.getItem(SPEICHER_KEY);
       if (roh) setWarenkorb(JSON.parse(roh));
-      setName(localStorage.getItem("morgenkorb_name") ?? "");
-      setKlasse(localStorage.getItem("morgenkorb_klasse") ?? "");
+      // Nur nachfüllen, wenn wir die Daten nicht schon vom Konto haben
+      if (!nutzer) {
+        setName(localStorage.getItem("morgenkorb_name") ?? "");
+        setKlasse(localStorage.getItem("morgenkorb_klasse") ?? "");
+      }
     } catch {
       /* egal, dann eben leer */
     }
-  }, []);
+  }, [nutzer]);
 
   useEffect(() => {
     try {
@@ -250,6 +256,7 @@ export function Bestellseite({
           setName={setName}
           setKlasse={setKlasse}
           setNotiz={setNotiz}
+          angemeldet={Boolean(nutzer)}
           onSchliessen={() => setKorbOffen(false)}
           onAendern={aendern}
           onAbsenden={absenden}
@@ -367,6 +374,7 @@ function KorbFenster({
   notiz,
   fehler,
   sendet,
+  angemeldet,
   setName,
   setKlasse,
   setNotiz,
@@ -382,6 +390,7 @@ function KorbFenster({
   notiz: string;
   fehler: string | null;
   sendet: boolean;
+  angemeldet: boolean;
   setName: (v: string) => void;
   setKlasse: (v: string) => void;
   setNotiz: (v: string) => void;
@@ -541,7 +550,17 @@ function KorbFenster({
           </div>
 
           <p className="pt-1 text-center text-xs text-leise">
-            Kein Konto nötig. Bezahlt wird morgen bar bei der Übergabe.
+            {angemeldet ? (
+              <>Du bist angemeldet – die Bestellung landet in deinem Konto.</>
+            ) : (
+              <>
+                Bezahlt wird morgen bar bei der Übergabe.{" "}
+                <a href="/registrieren?ziel=%2F" className="underline">
+                  Mit Konto
+                </a>{" "}
+                kannst du den Status verfolgen.
+              </>
+            )}
           </p>
         </form>
       </div>

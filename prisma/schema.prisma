@@ -43,10 +43,72 @@ model Order {
   /// true = Tag wurde abgeschlossen, Bestellung liegt im Archiv
   abgeschlossen Boolean  @default(false)
 
-  items OrderItem[]
+  /// Wer hat bestellt? Leer bei Bestellungen ohne Konto (Gast).
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  /// Wo steht die Bestellung gerade? Siehe src/lib/status.ts
+  /// EINGEGANGEN | IN_BEARBEITUNG | VERSENDET | ZUGESTELLT | STORNIERT
+  status   String   @default("EINGEGANGEN")
+  statusAm DateTime @default(now())
+
+  items    OrderItem[]
+  verlauf  OrderStatus[]
 
   @@index([abgeschlossen])
   @@index([erstelltAm])
+  @@index([userId])
+  @@index([status])
+}
+
+/// Jede Statusänderung wird mitgeschrieben – daraus bauen wir die
+/// Verfolgungsanzeige für den Kunden ("Bestellung erhalten -> ...").
+model OrderStatus {
+  id      Int      @id @default(autoincrement())
+  orderId String
+  status  String
+  am      DateTime @default(now())
+  /// optionale Notiz vom Admin, z. B. "Cola war aus"
+  notiz   String?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+/// Ein Konto. Passwörter werden NIE im Klartext gespeichert, sondern nur
+/// als Hash (siehe src/lib/passwort.ts).
+model User {
+  id           String   @id @default(cuid())
+  /// immer klein geschrieben gespeichert, damit "Anna@..." und "anna@..."
+  /// dasselbe Konto sind
+  email        String   @unique
+  name         String
+  klasse       String?
+  passwortHash String
+  /// "BESTELLER" oder "ADMIN" – als Text, damit SQLite und Postgres beide
+  /// damit klarkommen (SQLite kennt keine enums)
+  rolle        String   @default("BESTELLER")
+  erstelltAm   DateTime @default(now())
+
+  sitzungen Session[]
+  orders    Order[]
+}
+
+/// Eine angemeldete Sitzung ("eingeloggt bleiben").
+/// Im Cookie steht ein zufälliger Schlüssel, in der Datenbank nur dessen
+/// Hash. Wer die Datenbank liest, kann sich damit also nicht anmelden.
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  laeuftAbAm DateTime
+  erstelltAm DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([laeuftAbAm])
 }
 
 /// Eine Zeile innerhalb einer Bestellung ("3x Cola").

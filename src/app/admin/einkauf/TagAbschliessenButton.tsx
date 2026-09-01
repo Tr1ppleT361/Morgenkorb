@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { tagAbschliessen } from "./actions";
+import { tagAbschliessen } from "../actions";
 
 /**
  * Schließt den Tag ab: alle offenen Bestellungen wandern ins Archiv.

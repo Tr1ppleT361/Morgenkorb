@@ -4,9 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const links = [
-  { href: "/admin", label: "Einkaufsliste" },
-  { href: "/admin/personen", label: "Pro Person" },
+  { href: "/admin", label: "Übersicht" },
+  { href: "/admin/bestellungen", label: "Bestellungen" },
+  { href: "/admin/einkauf", label: "Einkaufsliste" },
+  { href: "/admin/kunden", label: "Kunden" },
   { href: "/admin/produkte", label: "Produkte" },
+  { href: "/admin/kasse", label: "Kasse" },
   { href: "/admin/archiv", label: "Archiv" },
 ];
 
@@ -15,7 +18,7 @@ export function AdminNavigation() {
   const pfad = usePathname();
 
   return (
-    <nav className="flex gap-2 overflow-x-auto pb-1">
+    <nav className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {links.map((l) => {
         const aktiv = pfad === l.href;
         return (
@@ -23,7 +26,7 @@ export function AdminNavigation() {
             key={l.href}
             href={l.href}
             className={
-              "shrink-0 rounded-weich px-4 py-2.5 text-sm font-semibold transition " +
+              "shrink-0 rounded-full px-4 py-2.5 text-sm font-semibold transition " +
               (aktiv
                 ? "bg-honig text-white"
                 : "border border-linie bg-karte text-leise hover:bg-honigHell")

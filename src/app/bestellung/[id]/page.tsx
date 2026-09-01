@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { euro, summeCent } from "@/lib/geld";
 import { config } from "@/config";
 import { KorbZeichen } from "@/components/Logo";
+import { StatusVerlauf } from "@/components/StatusVerlauf";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,10 @@ export default async function Bestaetigung({
 
   const bestellung = await prisma.order.findUnique({
     where: { id },
-    include: { items: { include: { product: true } } },
+    include: {
+      items: { include: { product: true } },
+      verlauf: { orderBy: { am: "asc" } },
+    },
   });
 
   if (!bestellung) notFound();
@@ -50,8 +54,18 @@ export default async function Bestaetigung({
         </p>
       </div>
 
+      {/* Wo steht die Bestellung gerade? */}
+      <section className="mt-7">
+        <h2 className="mb-2 font-titel text-lg font-bold">Status</h2>
+        <StatusVerlauf
+          status={bestellung.status}
+          verlauf={bestellung.verlauf}
+          zeitzone={config.zeitzone}
+        />
+      </section>
+
       {/* Der Zettel */}
-      <div className="karte relative mt-7 overflow-hidden">
+      <div className="karte relative mt-2 overflow-hidden">
         {/* gezackte Oberkante, wie abgerissen */}
         <div
           className="h-3 w-full bg-honig/25"

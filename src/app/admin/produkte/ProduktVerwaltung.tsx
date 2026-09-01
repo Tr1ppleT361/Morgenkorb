@@ -4,6 +4,7 @@ import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { euro } from "@/lib/geld";
 import {
+  kategorieVeroeffentlichen,
   produktAktivUmschalten,
   produktSpeichern,
   type ProduktStatus,
@@ -61,14 +62,61 @@ export function ProduktVerwaltung({
         </button>
       </div>
 
+      {/* Ganze Kategorie auf einmal ein-/ausblenden */}
+      {!suche && (
+        <div className="karte mt-3 flex flex-wrap items-center gap-2 p-3">
+          <span className="etikett mr-1">Kategorie</span>
+          {kategorien.map((k) => (
+            <span key={k} className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  await kategorieVeroeffentlichen(k, true);
+                  router.refresh();
+                }}
+                className="rounded-l-full border border-linie bg-karte px-2.5 py-1 text-xs font-semibold transition hover:bg-honigHell"
+                title={`${k} veröffentlichen`}
+              >
+                {k}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await kategorieVeroeffentlichen(k, false);
+                  router.refresh();
+                }}
+                className="-ml-1 rounded-r-full border border-linie bg-karte px-2 py-1 text-xs font-semibold text-leise transition hover:bg-honigHell"
+                title={`${k} verstecken`}
+              >
+                aus
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <p className="mt-3 px-1 text-sm text-leise">
-        {produkte.filter((p) => p.aktiv).length} aktiv ·{" "}
-        {produkte.filter((p) => !p.aktiv).length} inaktiv
+        {produkte.filter((p) => p.aktiv).length} veröffentlicht ·{" "}
+        {produkte.filter((p) => !p.aktiv).length} versteckt
       </p>
 
       <ul className="karte mt-2 divide-y divide-linie overflow-hidden">
         {gefiltert.map((p) => (
           <li key={p.id} className="flex items-center gap-3 px-4 py-3">
+            {/* Bildvorschau – ohne Bild ein Platzhalter */}
+            {p.bildUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={p.bildUrl}
+                alt=""
+                className="h-11 w-11 shrink-0 rounded-weich border border-linie object-cover"
+              />
+            ) : (
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-weich border border-dashed border-linie text-[0.6rem] font-bold uppercase text-leise">
+                Bild
+              </span>
+            )}
+
             <div className="min-w-0 flex-1">
               <p
                 className={
@@ -79,7 +127,7 @@ export function ProduktVerwaltung({
               </p>
               <p className="text-sm text-leise">
                 {euro(p.preis)} · {p.kategorie}
-                {!p.aktiv && " · inaktiv"}
+                {!p.aktiv && " · versteckt"}
               </p>
             </div>
 
@@ -96,7 +144,8 @@ export function ProduktVerwaltung({
               type="button"
               role="switch"
               aria-checked={p.aktiv}
-              aria-label={`${p.name} ${p.aktiv ? "deaktivieren" : "aktivieren"}`}
+              aria-label={`${p.name} ${p.aktiv ? "verstecken" : "veröffentlichen"}`}
+              title={p.aktiv ? "Im Shop sichtbar" : "Versteckt"}
               onClick={async () => {
                 await produktAktivUmschalten(p.id, !p.aktiv);
                 router.refresh();
@@ -142,6 +191,7 @@ function ProduktFormular({
   onFertig: () => void;
 }) {
   const [status, formAction, laeuft] = useActionState(produktSpeichern, start);
+  const [bildVorschau, setBildVorschau] = useState(produkt?.bildUrl ?? "");
 
   // Nach erfolgreichem Speichern das Formular schließen
   useEffect(() => {
@@ -224,16 +274,41 @@ function ProduktFormular({
 
             <div>
               <label className="mb-1 block text-sm font-medium" htmlFor="p-bild">
-                Bild-URL (optional)
+                Bild <span className="font-normal text-leise">(optional)</span>
               </label>
-              <input
-                id="p-bild"
-                name="bildUrl"
-                className="eingabe"
-                type="url"
-                placeholder="https://…"
-                defaultValue={produkt?.bildUrl ?? ""}
-              />
+              <div className="flex items-start gap-3">
+                {/* Vorschau aktualisiert sich beim Tippen */}
+                {bildVorschau ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={bildVorschau}
+                    alt=""
+                    className="h-16 w-16 shrink-0 rounded-weich border border-linie object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.opacity = "0.25";
+                    }}
+                  />
+                ) : (
+                  <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-weich border border-dashed border-linie text-[0.6rem] font-bold uppercase text-leise">
+                    Vorschau
+                  </span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <input
+                    id="p-bild"
+                    name="bildUrl"
+                    className="eingabe"
+                    type="url"
+                    placeholder="https://…"
+                    defaultValue={produkt?.bildUrl ?? ""}
+                    onChange={(e) => setBildVorschau(e.target.value.trim())}
+                  />
+                  <p className="mt-1 text-xs text-leise">
+                    Adresse eines Bildes im Netz. Ohne Bild zeigt der Shop das
+                    gezeichnete Kategorie-Motiv.
+                  </p>
+                </div>
+              </div>
             </div>
 
             <label className="flex items-center gap-3 py-2">
@@ -243,7 +318,7 @@ function ProduktFormular({
                 defaultChecked={produkt ? produkt.aktiv : true}
                 className="h-6 w-6 accent-honig"
               />
-              <span className="text-base">Im Shop sichtbar (aktiv)</span>
+              <span className="text-base">Im Shop veröffentlichen</span>
             </label>
 
             {status.fehler && (

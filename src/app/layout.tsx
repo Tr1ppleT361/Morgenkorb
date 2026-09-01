@@ -5,6 +5,7 @@ import "./globals.css";
 import { config } from "@/config";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { KorbZeichen } from "@/components/Logo";
+import { KontoKnopf } from "@/components/KontoKnopf";
 
 /**
  * Zwei Schriften geben der Seite Charakter:
@@ -86,7 +87,10 @@ export default function RootLayout({
                 </span>
               </span>
             </Link>
-            <ThemeToggle />
+            <div className="flex shrink-0 items-center gap-2">
+              <KontoKnopf />
+              <ThemeToggle />
+            </div>
           </div>
         </header>
 
