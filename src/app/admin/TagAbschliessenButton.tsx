@@ -17,24 +17,33 @@ export function TagAbschliessenButton({ anzahl }: { anzahl: number }) {
     return (
       <button
         type="button"
-        className="btn-ghost w-full"
+        className="btn-zweit w-full"
         onClick={() => setNachfrage(true)}
       >
-        ✔ Tag abschließen
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden>
+          <path
+            d="m5 12.5 4.5 4.5L19 7.5"
+            stroke="currentColor"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        Tag abschließen
       </button>
     );
   }
 
   return (
-    <div className="karte border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
-      <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+    <div className="karte border-honig/40 bg-honigHell p-4">
+      <p className="text-sm font-medium text-ziegel">
         {anzahl} {anzahl === 1 ? "Bestellung wird" : "Bestellungen werden"} ins
         Archiv verschoben. Die Tagesliste ist danach leer.
       </p>
       <div className="mt-3 flex gap-2">
         <button
           type="button"
-          className="btn-ghost flex-1"
+          className="btn-zweit flex-1"
           onClick={() => setNachfrage(false)}
           disabled={laeuft}
         >
@@ -42,7 +51,7 @@ export function TagAbschliessenButton({ anzahl }: { anzahl: number }) {
         </button>
         <button
           type="button"
-          className="btn-primary flex-1"
+          className="btn-primaer flex-1"
           disabled={laeuft}
           onClick={() =>
             starte(async () => {

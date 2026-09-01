@@ -23,9 +23,9 @@ export default async function AdminLayout({
       <main className="mx-auto max-w-sm px-4 py-16">
         <div className="karte p-6">
           <h1 className="text-xl font-bold">Admin noch nicht eingerichtet</h1>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+          <p className="mt-2 text-sm text-leise">
             Es ist kein Admin-Passwort hinterlegt. Trage die Umgebungsvariable{" "}
-            <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">
+            <code className="rounded bg-honigHell px-1 font-mono text-[0.85em]">
               ADMIN_PASSWORD
             </code>{" "}
             ein – lokal in der Datei <code>.env</code>, auf Vercel unter
@@ -42,10 +42,18 @@ export default async function AdminLayout({
 
   return (
     <main className="mx-auto max-w-3xl px-4 pb-16 pt-4">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Admin</h1>
+      <div className="mb-4 flex items-end justify-between gap-3">
+        <div>
+          <p className="etikett">Nur für dich</p>
+          <h1 className="font-titel text-3xl font-bold leading-tight">
+            Der Einkauf
+          </h1>
+        </div>
         <form action={ausloggen}>
-          <button type="submit" className="text-sm text-slate-500 underline">
+          <button
+            type="submit"
+            className="rounded-weich border border-linie bg-karte px-3 py-2 text-sm font-semibold text-leise transition hover:text-tinte"
+          >
             Abmelden
           </button>
         </form>
@@ -55,7 +63,7 @@ export default async function AdminLayout({
 
       <div className="mt-4">{children}</div>
 
-      <p className="mt-10 text-center text-xs text-slate-400">
+      <p className="mt-10 text-center text-xs text-leise">
         <Link href="/" className="underline">
           Zur Bestellseite
         </Link>

@@ -2,44 +2,115 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Grundfarben für hell und dunkel */
+/*
+  Die Farbwelt: warme Papiertöne statt kaltem Grau.
+  Alle Werte als "R G B" (ohne Klammern) – so kann Tailwind Abstufungen
+  wie bg-karte/60 daraus bauen.
+
+  Willst du eine andere Stimmung? Ändere nur diese Zahlen.
+*/
 @layer base {
+  :root {
+    --grund: 247 241 231; /* Cremepapier */
+    --karte: 255 252 246; /* etwas heller als der Grund */
+    --linie: 231 216 195; /* warmer Rahmen */
+    --tinte: 44 33 25; /* dunkles Kakaobraun statt Schwarz */
+    --leise: 132 113 95; /* Nebentext */
+    --honig: 214 138 45; /* warmes Orange */
+    --honig-hell: 250 235 209;
+    --ziegel: 176 74 45; /* gebrannte Terrakotta */
+    --moos: 106 132 78; /* ruhiges Grün */
+    --beere: 158 62 74; /* für Hinweise */
+  }
+
+  .dark {
+    /* Auch dunkel bleibt es warm – kein blaustichiges Nachtblau */
+    --grund: 26 21 18;
+    --karte: 37 30 25;
+    --linie: 61 49 40;
+    --tinte: 243 233 219;
+    --leise: 165 146 127;
+    --honig: 226 158 74;
+    --honig-hell: 62 45 26;
+    --ziegel: 199 100 70;
+    --moos: 138 165 106;
+    --beere: 201 108 118;
+  }
+
   html {
-    /* Verhindert das "Zoom-Springen" auf iPhones bei Eingabefeldern */
     -webkit-text-size-adjust: 100%;
   }
+
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply bg-grund font-text text-tinte antialiased;
+    /*
+      Ganz feine Papierkörnung. Zwei sehr weiche Farbverläufe, die sich
+      überlagern – das nimmt der Fläche das "frisch aus dem Generator"-Glatte.
+    */
+    background-image:
+      radial-gradient(
+        ellipse 80rem 40rem at 50% -10%,
+        rgb(var(--honig) / 0.07),
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse 60rem 30rem at 100% 100%,
+        rgb(var(--ziegel) / 0.05),
+        transparent 60%
+      );
+    background-attachment: fixed;
   }
-  .dark body {
-    @apply bg-slate-950 text-slate-100;
+
+  h1,
+  h2,
+  h3 {
+    @apply font-titel;
+  }
+
+  /* Auswahlfarbe passend zur Palette */
+  ::selection {
+    background: rgb(var(--honig) / 0.28);
   }
 }
 
 @layer components {
-  /* Wiederverwendbare Bausteine – so bleibt das JSX kürzer */
+  /* --- Flächen --- */
   .karte {
-    @apply rounded-2xl border border-slate-200 bg-white shadow-sm
-           dark:border-slate-800 dark:bg-slate-900;
+    @apply rounded-korb border border-linie bg-karte shadow-sanft;
   }
+
+  /* --- Knöpfe --- */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3
-           text-base font-semibold transition active:scale-95
-           disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100;
+    @apply inline-flex min-h-[3rem] items-center justify-center gap-2 rounded-weich
+           px-5 text-base font-semibold transition
+           active:translate-y-px
+           disabled:cursor-not-allowed disabled:opacity-45 disabled:active:translate-y-0;
   }
-  .btn-primary {
-    @apply btn bg-korb-600 text-white hover:bg-korb-700;
+  .btn-primaer {
+    @apply btn bg-ziegel text-white shadow-sanft hover:brightness-110;
   }
-  .btn-ghost {
-    @apply btn border border-slate-300 bg-white text-slate-700
-           hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900
-           dark:text-slate-200 dark:hover:bg-slate-800;
+  .btn-zweit {
+    @apply btn border border-linie bg-karte text-tinte hover:bg-honigHell;
   }
+  .btn-leise {
+    @apply btn px-3 text-leise hover:text-tinte;
+  }
+
+  /* --- Eingaben --- */
   .eingabe {
-    @apply w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base
-           text-slate-900 outline-none placeholder:text-slate-400
-           focus:border-korb-500 focus:ring-2 focus:ring-korb-200
-           dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
-           dark:focus:ring-korb-900;
+    @apply w-full rounded-weich border border-linie bg-karte px-4 py-3 text-base
+           text-tinte outline-none transition
+           placeholder:text-leise/70
+           focus:border-honig focus:ring-4 focus:ring-honig/15;
+  }
+
+  /* --- Kleine Bausteine --- */
+  .etikett {
+    @apply text-[0.7rem] font-bold uppercase tracking-[0.14em] text-leise;
+  }
+
+  /* Zahlen sollen nicht springen, wenn sich Mengen ändern */
+  .ziffern {
+    font-variant-numeric: tabular-nums;
   }
 }

@@ -22,8 +22,8 @@ export default async function ProPersonSeite() {
 
   if (bestellungen.length === 0) {
     return (
-      <p className="karte p-6 text-center text-slate-500">
-        Noch keine Bestellungen für morgen. 🌙
+      <p className="karte p-6 text-center text-leise">
+        Noch ist nichts bestellt. Schau heute Abend nochmal rein.
       </p>
     );
   }
@@ -32,16 +32,16 @@ export default async function ProPersonSeite() {
     <div>
       <div className="grid grid-cols-2 gap-2">
         <div className="karte p-3 text-center">
-          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          <p className="text-xs uppercase tracking-wide text-leise">
             Gesamt
           </p>
-          <p className="mt-1 text-lg font-bold tabular-nums">{euro(gesamt)}</p>
+          <p className="mt-1 text-lg font-bold ziffern">{euro(gesamt)}</p>
         </div>
         <div className="karte p-3 text-center">
-          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          <p className="text-xs uppercase tracking-wide text-leise">
             Noch offen
           </p>
-          <p className="mt-1 text-lg font-bold tabular-nums text-amber-600 dark:text-amber-400">
+          <p className="mt-1 text-lg font-bold ziffern text-ziegel">
             {euro(offenerBetrag)}
           </p>
         </div>

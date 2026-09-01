@@ -18,7 +18,7 @@ export default async function ArchivSeite() {
 
   if (bestellungen.length === 0) {
     return (
-      <p className="karte p-6 text-center text-slate-500">
+      <p className="karte p-6 text-center text-leise">
         Das Archiv ist noch leer.
       </p>
     );
@@ -42,33 +42,32 @@ export default async function ArchivSeite() {
         const summe = liste.reduce((s, b) => s + summeCent(b.items), 0);
         return (
           <section key={tag}>
-            <h2 className="mb-2 flex items-baseline justify-between text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <h2 className="mb-2 flex items-baseline justify-between text-sm font-bold uppercase tracking-wide text-leise">
               <span>{tag}</span>
-              <span className="tabular-nums">{euro(summe)}</span>
+              <span className="ziffern">{euro(summe)}</span>
             </h2>
-            <ul className="karte divide-y divide-slate-100 overflow-hidden dark:divide-slate-800">
+            <ul className="karte divide-y divide-linie overflow-hidden">
               {liste.map((b) => (
                 <li key={b.id} className="flex items-center gap-3 px-4 py-3">
                   <span
                     className={
-                      "text-lg " + (b.bezahlt ? "text-korb-600" : "text-amber-500")
+                      "h-2.5 w-2.5 shrink-0 rounded-full " +
+                      (b.bezahlt ? "bg-moos" : "bg-honig")
                     }
                     title={b.bezahlt ? "bezahlt" : "offen"}
-                  >
-                    {b.bezahlt ? "✓" : "€"}
-                  </span>
+                  />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">
                       {b.name}{" "}
-                      <span className="font-normal text-slate-500 dark:text-slate-400">
+                      <span className="font-normal text-leise">
                         · {b.klasse}
                       </span>
                     </p>
-                    <p className="truncate text-sm text-slate-500 dark:text-slate-400">
+                    <p className="truncate text-sm text-leise">
                       {b.items.map((i) => `${i.menge}× ${i.product.name}`).join(", ")}
                     </p>
                   </div>
-                  <span className="shrink-0 font-semibold tabular-nums">
+                  <span className="shrink-0 font-semibold ziffern">
                     {euro(summeCent(b.items))}
                   </span>
                 </li>

@@ -1,5 +1,5 @@
 /**
- * Bestätigungsseite nach dem Absenden.
+ * Bestätigungsseite nach dem Absenden – aufgemacht wie ein Kassenzettel.
  * Die Adresse enthält die zufällige Bestell-ID, z. B. /bestellung/clx123...
  */
 import Link from "next/link";
@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { euro, summeCent } from "@/lib/geld";
 import { config } from "@/config";
+import { KorbZeichen } from "@/components/Logo";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,7 @@ export default async function Bestaetigung({
   if (!bestellung) notFound();
 
   const summe = summeCent(bestellung.items);
+  const stueck = bestellung.items.reduce((s, i) => s + i.menge, 0);
 
   const datum = new Intl.DateTimeFormat("de-DE", {
     dateStyle: "short",
@@ -34,76 +36,123 @@ export default async function Bestaetigung({
   }).format(bestellung.erstelltAm);
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8">
-      <div className="karte p-6 text-center">
-        <div className="text-5xl" aria-hidden>
-          ✅
-        </div>
-        <h1 className="mt-3 text-2xl font-bold">Bestellung eingegangen!</h1>
-        <p className="mt-2 text-slate-600 dark:text-slate-400">
-          Danke, {bestellung.name}! Deine Sachen sind morgen früh da.
+    <main className="mx-auto max-w-lg px-4 py-8">
+      {/* Kopf */}
+      <div className="text-center">
+        <span className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-moos/15 text-moos ring-1 ring-moos/25">
+          <HakenZeichen className="h-8 w-8" />
+        </span>
+        <h1 className="mt-4 font-titel text-3xl font-bold leading-tight">
+          Alles klar, {bestellung.name}!
+        </h1>
+        <p className="mt-2 text-leise">
+          Deine Sachen sind morgen früh dabei.
         </p>
       </div>
 
-      <div className="karte mt-4 p-4">
-        <h2 className="mb-3 text-lg font-bold">Deine Artikel</h2>
-        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-          {bestellung.items.map((item) => (
-            <li key={item.id} className="flex items-center gap-3 py-2">
-              <span className="w-10 shrink-0 font-bold text-korb-700 dark:text-korb-400">
-                {item.menge}×
-              </span>
-              <span className="min-w-0 flex-1">{item.product.name}</span>
-              <span className="tabular-nums">
-                {euro(item.menge * item.preisBeimKauf)}
-              </span>
-            </li>
-          ))}
-        </ul>
+      {/* Der Zettel */}
+      <div className="karte relative mt-7 overflow-hidden">
+        {/* gezackte Oberkante, wie abgerissen */}
+        <div
+          className="h-3 w-full bg-honig/25"
+          style={{
+            maskImage:
+              "radial-gradient(circle at 6px 0, transparent 5px, black 5.5px)",
+            maskSize: "12px 12px",
+            maskRepeat: "repeat-x",
+            WebkitMaskImage:
+              "radial-gradient(circle at 6px 0, transparent 5px, black 5.5px)",
+            WebkitMaskSize: "12px 12px",
+            WebkitMaskRepeat: "repeat-x",
+          }}
+        />
 
-        {bestellung.notiz && (
-          <p className="mt-4 rounded-xl bg-slate-100 px-4 py-3 text-sm dark:bg-slate-800">
-            <span className="font-semibold">Notiz:</span> {bestellung.notiz}
-          </p>
-        )}
+        <div className="px-5 pb-5 pt-4">
+          <div className="flex items-center justify-between">
+            <span className="inline-flex items-center gap-2 font-titel text-lg font-bold">
+              <KorbZeichen className="h-5 w-5 text-ziegel" />
+              {config.appName}
+            </span>
+            <span className="etikett">{stueck} Teile</span>
+          </div>
+
+          <div className="my-4 border-t border-dashed border-linie" />
+
+          <ul className="space-y-2.5">
+            {bestellung.items.map((item) => (
+              <li key={item.id} className="flex items-baseline gap-3 text-sm">
+                <span className="w-8 shrink-0 font-bold text-ziegel ziffern">
+                  {item.menge}×
+                </span>
+                <span className="min-w-0 flex-1">{item.product.name}</span>
+                {/* Punktreihe wie auf einem echten Bon */}
+                <span className="h-px min-w-4 flex-1 self-center border-b border-dotted border-linie" />
+                <span className="shrink-0 ziffern">
+                  {euro(item.menge * item.preisBeimKauf)}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          {bestellung.notiz && (
+            <p className="mt-4 rounded-weich bg-honigHell px-3.5 py-2.5 text-sm">
+              <span className="font-semibold">Notiz: </span>
+              {bestellung.notiz}
+            </p>
+          )}
+
+          <div className="my-4 border-t border-dashed border-linie" />
+
+          <div className="flex items-center justify-between gap-3">
+            <p className="etikett">Bitte mitbringen</p>
+            <p className="font-titel text-[2.5rem] font-bold leading-none ziffern">
+              {euro(summe)}
+            </p>
+          </div>
+          <p className="mt-1.5 text-xs text-leise">{config.uebergabeHinweis}</p>
+        </div>
+
+        {/* Fußzeile des Zettels */}
+        <dl className="grid grid-cols-3 gap-2 border-t border-linie bg-grund px-5 py-3 text-xs text-leise">
+          <div>
+            <dt className="etikett">Klasse</dt>
+            <dd className="mt-0.5 text-tinte">{bestellung.klasse}</dd>
+          </div>
+          <div>
+            <dt className="etikett">Bestellt</dt>
+            <dd className="mt-0.5 text-tinte ziffern">{datum}</dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="etikett">Nummer</dt>
+            <dd className="mt-0.5 truncate font-mono text-[0.65rem] text-tinte">
+              {bestellung.id}
+            </dd>
+          </div>
+        </dl>
       </div>
 
-      {/* Der wichtigste Teil: was mitzubringen ist */}
-      <div className="karte mt-4 border-korb-300 bg-korb-50 p-6 text-center dark:border-korb-800 dark:bg-korb-900/30">
-        <p className="text-sm font-semibold uppercase tracking-wide text-korb-800 dark:text-korb-300">
-          Bitte mitbringen
-        </p>
-        <p className="mt-1 text-4xl font-bold tabular-nums">{euro(summe)}</p>
-        <p className="mt-2 text-sm text-korb-900 dark:text-korb-200">
-          {config.uebergabeHinweis}
-        </p>
-      </div>
+      <Link href="/" className="btn-zweit mt-5 w-full">
+        Noch etwas bestellen
+      </Link>
 
-      <dl className="mt-4 space-y-1 px-1 text-sm text-slate-500 dark:text-slate-400">
-        <div className="flex justify-between">
-          <dt>Klasse</dt>
-          <dd>{bestellung.klasse}</dd>
-        </div>
-        <div className="flex justify-between">
-          <dt>Bestellt am</dt>
-          <dd>{datum} Uhr</dd>
-        </div>
-        <div className="flex justify-between">
-          <dt>Bestellnummer</dt>
-          <dd className="font-mono text-xs">{bestellung.id}</dd>
-        </div>
-      </dl>
-
-      <div className="mt-6 flex gap-3">
-        <Link href="/" className="btn-ghost flex-1">
-          Zurück zur Startseite
-        </Link>
-      </div>
-
-      <p className="mt-4 text-center text-xs text-slate-400">
-        Tipp: Speichere diese Seite als Lesezeichen, dann findest du deine
-        Bestellung wieder.
+      <p className="mt-4 text-center text-xs text-leise">
+        Tipp: Speichere diese Seite als Lesezeichen, dann findest du deinen
+        Zettel wieder.
       </p>
     </main>
+  );
+}
+
+function HakenZeichen({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden>
+      <path
+        d="m5 12.5 4.5 4.5L19 7.5"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

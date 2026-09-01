@@ -212,6 +212,34 @@ src/
 
 ---
 
+## Aussehen ändern
+
+Die Farben stehen alle an **einer** Stelle: ganz oben in `src/app/globals.css`.
+Dort gibt es einen Block für hell und einen für dunkel:
+
+```css
+:root {
+  --grund: 247 241 231;  /* Seitenhintergrund */
+  --karte: 255 252 246;  /* Kartenflächen */
+  --tinte: 44 33 25;     /* Textfarbe */
+  --honig: 214 138 45;   /* Hauptakzent */
+  --ziegel: 176 74 45;   /* Knöpfe */
+  ...
+}
+```
+
+Die Zahlen sind Rot, Grün und Blau (0–255). Änderst du sie, ändert sich die
+ganze Seite mit – im Code steht nämlich nirgends eine feste Farbe, sondern
+immer nur `bg-karte`, `text-leise` und so weiter.
+
+Die Schriften (Fraunces für Überschriften, Nunito für den Rest) werden in
+`src/app/layout.tsx` geladen. Die gezeichneten Produktbilder stecken in
+`src/components/KategorieIcon.tsx` – drei Motive je Kategorie, damit nicht
+überall dasselbe Bild steht. Sobald ein Produkt eine `bildUrl` hat, wird
+stattdessen das Foto angezeigt.
+
+---
+
 ## Warum Postgres und nicht SQLite?
 
 SQLite speichert alles in **einer Datei**. Das ist praktisch – aber Vercel

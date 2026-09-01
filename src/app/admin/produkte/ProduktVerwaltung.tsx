@@ -48,36 +48,36 @@ export function ProduktVerwaltung({
         <input
           type="search"
           className="eingabe"
-          placeholder="🔍 Produkt suchen"
+          placeholder="Produkt suchen"
           value={suche}
           onChange={(e) => setSuche(e.target.value)}
         />
         <button
           type="button"
-          className="btn-primary shrink-0"
+          className="btn-primaer shrink-0"
           onClick={() => setBearbeite("neu")}
         >
           + Neu
         </button>
       </div>
 
-      <p className="mt-3 px-1 text-sm text-slate-500 dark:text-slate-400">
+      <p className="mt-3 px-1 text-sm text-leise">
         {produkte.filter((p) => p.aktiv).length} aktiv ·{" "}
         {produkte.filter((p) => !p.aktiv).length} inaktiv
       </p>
 
-      <ul className="karte mt-2 divide-y divide-slate-100 overflow-hidden dark:divide-slate-800">
+      <ul className="karte mt-2 divide-y divide-linie overflow-hidden">
         {gefiltert.map((p) => (
           <li key={p.id} className="flex items-center gap-3 px-4 py-3">
             <div className="min-w-0 flex-1">
               <p
                 className={
-                  "truncate font-medium " + (p.aktiv ? "" : "text-slate-400")
+                  "truncate font-medium " + (p.aktiv ? "" : "text-leise")
                 }
               >
                 {p.name}
               </p>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
+              <p className="text-sm text-leise">
                 {euro(p.preis)} · {p.kategorie}
                 {!p.aktiv && " · inaktiv"}
               </p>
@@ -85,7 +85,7 @@ export function ProduktVerwaltung({
 
             <button
               type="button"
-              className="btn-ghost !px-3 !py-2 text-sm"
+              className="btn-zweit !px-3 !py-2 text-sm"
               onClick={() => setBearbeite(p)}
             >
               Bearbeiten
@@ -103,7 +103,7 @@ export function ProduktVerwaltung({
               }}
               className={
                 "relative h-8 w-14 shrink-0 rounded-full transition " +
-                (p.aktiv ? "bg-korb-600" : "bg-slate-300 dark:bg-slate-700")
+                (p.aktiv ? "bg-honig" : "bg-linie")
               }
             >
               <span
@@ -156,7 +156,7 @@ function ProduktFormular({
       onClick={onFertig}
     >
       <div
-        className="max-h-[90dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-4 pb-8 dark:bg-slate-900"
+        className="max-h-[90dvh] w-full overflow-y-auto rounded-t-[1.75rem] border border-linie bg-grund p-4 pb-8 shadow-gehoben"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto max-w-3xl">
@@ -241,22 +241,22 @@ function ProduktFormular({
                 type="checkbox"
                 name="aktiv"
                 defaultChecked={produkt ? produkt.aktiv : true}
-                className="h-6 w-6 accent-korb-600"
+                className="h-6 w-6 accent-honig"
               />
               <span className="text-base">Im Shop sichtbar (aktiv)</span>
             </label>
 
             {status.fehler && (
-              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:bg-red-950 dark:text-red-300">
+              <p className="rounded-weich border border-beere/40 bg-beere/10 px-4 py-3 text-sm font-semibold text-beere">
                 {status.fehler}
               </p>
             )}
 
             <div className="flex gap-3 pt-1">
-              <button type="button" className="btn-ghost flex-1" onClick={onFertig}>
+              <button type="button" className="btn-zweit flex-1" onClick={onFertig}>
                 Abbrechen
               </button>
-              <button type="submit" className="btn-primary flex-[2]" disabled={laeuft}>
+              <button type="submit" className="btn-primaer flex-[2]" disabled={laeuft}>
                 {laeuft ? "Speichert…" : "Speichern"}
               </button>
             </div>

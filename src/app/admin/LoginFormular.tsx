@@ -15,7 +15,7 @@ export function LoginFormular() {
     <main className="mx-auto max-w-sm px-4 py-16">
       <div className="karte p-6">
         <h1 className="text-xl font-bold">Admin-Bereich</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        <p className="mt-1 text-sm text-leise">
           Bitte Passwort eingeben.
         </p>
 
@@ -30,11 +30,11 @@ export function LoginFormular() {
             autoComplete="current-password"
           />
           {status.fehler && (
-            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:bg-red-950 dark:text-red-300">
+            <p className="rounded-weich border border-beere/40 bg-beere/10 px-4 py-3 text-sm font-semibold text-beere">
               {status.fehler}
             </p>
           )}
-          <button type="submit" className="btn-primary w-full" disabled={laeuft}>
+          <button type="submit" className="btn-primaer w-full" disabled={laeuft}>
             {laeuft ? "Moment…" : "Anmelden"}
           </button>
         </form>

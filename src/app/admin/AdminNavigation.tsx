@@ -23,10 +23,10 @@ export function AdminNavigation() {
             key={l.href}
             href={l.href}
             className={
-              "shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold transition " +
+              "shrink-0 rounded-weich px-4 py-2.5 text-sm font-semibold transition " +
               (aktiv
-                ? "bg-korb-600 text-white"
-                : "border border-slate-300 text-slate-600 dark:border-slate-700 dark:text-slate-300")
+                ? "bg-honig text-white"
+                : "border border-linie bg-karte text-leise hover:bg-honigHell")
             }
           >
             {l.label}

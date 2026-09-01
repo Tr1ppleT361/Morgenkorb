@@ -77,8 +77,8 @@ export default async function EinkaufslistenSeite() {
       </div>
 
       {positionen.length === 0 ? (
-        <p className="karte mt-4 p-6 text-center text-slate-500">
-          Noch keine Bestellungen für morgen. 🌙
+        <p className="karte mt-4 p-6 text-center text-leise">
+          Noch ist nichts bestellt. Schau heute Abend nochmal rein.
         </p>
       ) : (
         <>
@@ -95,10 +95,10 @@ export default async function EinkaufslistenSeite() {
 function Kachel({ titel, wert }: { titel: string; wert: string }) {
   return (
     <div className="karte p-3 text-center">
-      <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      <p className="text-xs uppercase tracking-wide text-leise">
         {titel}
       </p>
-      <p className="mt-1 text-lg font-bold tabular-nums">{wert}</p>
+      <p className="mt-1 text-lg font-bold ziffern">{wert}</p>
     </div>
   );
 }

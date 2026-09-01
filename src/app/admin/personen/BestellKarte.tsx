@@ -43,7 +43,7 @@ export function BestellKarte({
     <div
       className={
         "karte overflow-hidden " +
-        (istBezahlt ? "border-korb-300 dark:border-korb-800" : "")
+        (istBezahlt ? "border-moos/50" : "")
       }
     >
       <div className="flex items-center gap-3 p-4">
@@ -55,13 +55,15 @@ export function BestellKarte({
           aria-pressed={istBezahlt}
           aria-label={istBezahlt ? "Als unbezahlt markieren" : "Als bezahlt markieren"}
           className={
-            "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border-2 text-xl transition " +
+            "flex h-12 w-12 shrink-0 items-center justify-center rounded-weich border-2 text-xl transition " +
             (istBezahlt
-              ? "border-korb-600 bg-korb-600 text-white"
-              : "border-slate-300 text-transparent dark:border-slate-700")
+              ? "border-moos bg-moos text-white"
+              : "border-linie bg-karte text-transparent")
           }
         >
-          ✓
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden>
+            <path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </button>
 
         <button
@@ -71,30 +73,30 @@ export function BestellKarte({
         >
           <p className="truncate font-semibold">
             {name}{" "}
-            <span className="font-normal text-slate-500 dark:text-slate-400">
+            <span className="font-normal text-leise">
               · {klasse}
             </span>
           </p>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <p className="text-sm text-leise">
             {artikel.reduce((s, a) => s + a.menge, 0)} Artikel ·{" "}
             {offen ? "einklappen" : "anzeigen"}
           </p>
         </button>
 
-        <span className="shrink-0 text-lg font-bold tabular-nums">
+        <span className="shrink-0 text-lg font-bold ziffern">
           {euro(summe)}
         </span>
       </div>
 
       {offen && (
-        <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-800">
+        <div className="border-t border-linie px-4 py-3">
           <ul className="space-y-1 text-sm">
             {artikel.map((a) => (
               <li key={a.id} className="flex justify-between gap-3">
                 <span className="min-w-0">
                   <span className="font-semibold">{a.menge}×</span> {a.name}
                 </span>
-                <span className="tabular-nums text-slate-500 dark:text-slate-400">
+                <span className="ziffern text-leise">
                   {euro(a.menge * a.preis)}
                 </span>
               </li>
@@ -102,14 +104,14 @@ export function BestellKarte({
           </ul>
 
           {notiz && (
-            <p className="mt-3 rounded-xl bg-slate-100 px-3 py-2 text-sm dark:bg-slate-800">
+            <p className="mt-3 rounded-weich bg-honigHell px-3 py-2 text-sm">
               <span className="font-semibold">Notiz:</span> {notiz}
             </p>
           )}
 
           <button
             type="button"
-            className="mt-3 text-sm text-red-600 underline"
+            className="mt-3 text-sm text-beere underline"
             disabled={laeuft}
             onClick={() => {
               if (!confirm(`Bestellung von ${name} wirklich löschen?`)) return;

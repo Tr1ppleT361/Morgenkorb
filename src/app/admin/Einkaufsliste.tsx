@@ -51,14 +51,14 @@ export function Einkaufsliste({ gruppen }: { gruppen: Gruppe[] }) {
   return (
     <div className="mt-4">
       <div className="mb-2 flex items-center justify-between px-1">
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-leise">
           {abgehakt.length} von {gesamtZeilen} erledigt
         </p>
         {abgehakt.length > 0 && (
           <button
             type="button"
             onClick={zuruecksetzen}
-            className="text-sm text-slate-500 underline"
+            className="text-sm text-leise underline"
           >
             Häkchen zurücksetzen
           </button>
@@ -67,34 +67,57 @@ export function Einkaufsliste({ gruppen }: { gruppen: Gruppe[] }) {
 
       {gruppen.map((g) => (
         <section key={g.kategorie} className="mb-4">
-          <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          <h2 className="mb-2 font-text etikett">
             {g.kategorie}
           </h2>
-          <ul className="karte divide-y divide-slate-100 overflow-hidden dark:divide-slate-800">
+          <ul className="karte divide-y divide-linie overflow-hidden">
             {g.zeilen.map((z) => {
               const erledigt = abgehakt.includes(z.id);
               return (
                 <li key={z.id}>
                   {/* Ganze Zeile ist anklickbar – gut für dicke Finger im Laden */}
                   <label className="flex cursor-pointer items-center gap-3 px-4 py-4">
+                    {/*
+                      Eigene Checkbox: die vom System sieht auf jedem Gerät
+                      anders aus und leuchtet im Dunkelmodus grell weiß.
+                    */}
                     <input
                       type="checkbox"
                       checked={erledigt}
                       onChange={() => umschalten(z.id)}
-                      className="h-6 w-6 shrink-0 accent-korb-600"
+                      className="peer sr-only"
                     />
-                    <span className="w-12 shrink-0 text-lg font-bold tabular-nums text-korb-700 dark:text-korb-400">
+                    <span
+                      aria-hidden
+                      className={
+                        "flex h-7 w-7 shrink-0 items-center justify-center rounded-[0.5rem] border-2 transition peer-focus-visible:ring-4 peer-focus-visible:ring-honig/25 " +
+                        (erledigt
+                          ? "border-moos bg-moos text-white"
+                          : "border-linie bg-karte text-transparent")
+                      }
+                    >
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+                        <path
+                          d="m5 12.5 4.5 4.5L19 7.5"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </span>
+                    <span className="w-12 shrink-0 text-lg font-bold ziffern text-ziegel">
                       {z.menge}×
                     </span>
                     <span
                       className={
                         "min-w-0 flex-1 text-base " +
-                        (erledigt ? "text-slate-400 line-through" : "")
+                        (erledigt ? "text-leise line-through" : "")
                       }
                     >
                       {z.name}
                     </span>
-                    <span className="shrink-0 text-sm tabular-nums text-slate-500 dark:text-slate-400">
+                    <span className="shrink-0 text-sm ziffern text-leise">
                       {euro(z.summe)}
                     </span>
                   </label>
