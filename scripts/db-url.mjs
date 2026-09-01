@@ -1,13 +1,25 @@
 /**
- * Findet die Adresse der Datenbank.
+ * Findet die Adresse der Datenbank in den Umgebungsvariablen.
  *
- * Warum so umständlich? Vercel legt die Variable je nach Datenbank-Anbieter
- * unter verschiedenen Namen ab: mal DATABASE_URL, mal POSTGRES_PRISMA_URL,
- * mal POSTGRES_URL. Statt darauf zu hoffen, dass es der richtige Name ist,
- * schauen wir einfach der Reihe nach nach.
+ * Warum so aufwendig? Es gibt zwei Stolperfallen:
+ *
+ * 1. Der Name ist je nach Anbieter anders: DATABASE_URL,
+ *    POSTGRES_PRISMA_URL, POSTGRES_URL ...
+ * 2. Vercel kann beim Anlegen der Datenbank ein Präfix davorsetzen.
+ *    Dann heißt die Variable z. B. MorgenkorbDB_DATABASE_URL.
+ *
+ * Deshalb suchen wir in drei Stufen:
+ *   a) exakt der erwartete Name
+ *   b) irgendein Name, der auf den erwarteten Namen endet (also mit Präfix)
+ *   c) als letzte Rettung: irgendeine Variable, deren Wert wie eine
+ *      Postgres-Adresse aussieht
  */
 
-/** Namen für den normalen Betrieb (Abfragen). Pooled ist hier besser. */
+/**
+ * Endungen für den normalen Betrieb (Abfragen).
+ * Eine "gepoolte" Verbindung ist hier besser, weil sich viele kurze
+ * Anfragen eine Handvoll Verbindungen teilen.
+ */
 const FUER_ABFRAGEN = [
   "DATABASE_URL",
   "POSTGRES_PRISMA_URL",
@@ -17,9 +29,9 @@ const FUER_ABFRAGEN = [
 ];
 
 /**
- * Namen zum Anlegen der Tabellen.
+ * Endungen zum Anlegen der Tabellen.
  * Hier ist eine direkte ("unpooled") Verbindung besser, weil Änderungen am
- * Tabellen-Aufbau über einen Verbindungs-Pool schiefgehen können.
+ * Tabellenaufbau über einen Verbindungs-Pool schiefgehen können.
  */
 const FUER_TABELLEN = [
   "DATABASE_URL_UNPOOLED",
@@ -29,21 +41,54 @@ const FUER_TABELLEN = [
   "POSTGRES_URL",
 ];
 
-/** Sucht den ersten Namen, der einen nicht-leeren Wert hat. */
-function ersteAdresse(namen, env = process.env) {
-  for (const name of namen) {
-    const wert = env[name];
-    if (wert && wert.trim() !== "") return { name, wert: wert.trim() };
+/** Sieht der Wert überhaupt nach einer Datenbank-Adresse aus? */
+function istDatenbankAdresse(wert) {
+  return (
+    typeof wert === "string" &&
+    /^(postgres|postgresql|prisma|prisma\+postgres):\/\//.test(wert.trim())
+  );
+}
+
+/**
+ * Sucht die passende Variable.
+ * @param endungen Liste erwarteter Namen, wichtigster zuerst
+ */
+function suche(endungen, env) {
+  // a) exakter Name
+  for (const name of endungen) {
+    if (istDatenbankAdresse(env[name])) {
+      return { name, wert: env[name].trim() };
+    }
   }
+
+  // b) Name mit Präfix, z. B. MorgenkorbDB_DATABASE_URL
+  for (const endung of endungen) {
+    const treffer = Object.keys(env)
+      .filter((name) => name.endsWith("_" + endung))
+      .filter((name) => istDatenbankAdresse(env[name]))
+      .sort(); // gleiche Kandidaten -> immer dieselbe Wahl
+    if (treffer.length > 0) {
+      return { name: treffer[0], wert: env[treffer[0]].trim() };
+    }
+  }
+
+  // c) letzte Rettung: irgendetwas, das wie eine Postgres-Adresse aussieht
+  const irgendeine = Object.keys(env)
+    .filter((name) => istDatenbankAdresse(env[name]))
+    .sort();
+  if (irgendeine.length > 0) {
+    return { name: irgendeine[0], wert: env[irgendeine[0]].trim() };
+  }
+
   return null;
 }
 
 export function adresseFuerAbfragen(env = process.env) {
-  return ersteAdresse(FUER_ABFRAGEN, env);
+  return suche(FUER_ABFRAGEN, env);
 }
 
 export function adresseFuerTabellen(env = process.env) {
-  return ersteAdresse(FUER_TABELLEN, env);
+  return suche(FUER_TABELLEN, env);
 }
 
-export { FUER_ABFRAGEN, FUER_TABELLEN };
+export { FUER_ABFRAGEN, FUER_TABELLEN, istDatenbankAdresse };

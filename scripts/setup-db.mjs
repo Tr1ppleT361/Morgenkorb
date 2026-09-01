@@ -33,7 +33,8 @@ if (!abfragen || !tabellen) {
   console.error(`
 ❌ Keine Datenbank gefunden.
 
-Gesucht wurde nach diesen Umgebungsvariablen:
+Gesucht wurde nach diesen Namen – auch mit Präfix davor
+(z. B. MorgenkorbDB_DATABASE_URL):
 ${FUER_ABFRAGEN.map((n) => `   • ${n}`).join("\n")}
 
 Keine davon ist gesetzt. So behebst du das:

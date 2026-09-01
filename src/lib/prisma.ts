@@ -8,22 +8,19 @@
 import { PrismaClient } from "@prisma/client";
 
 /**
- * Vercel legt die Datenbank-Adresse je nach Anbieter unter verschiedenen
- * Namen ab. Prisma sucht aber immer nach DATABASE_URL. Falls die fehlt,
- * füllen wir sie hier aus einem der anderen Namen auf – das muss passieren,
+ * Vercel legt die Datenbank-Adresse unter wechselnden Namen ab – und setzt
+ * je nach Datenbank noch ein Präfix davor (z. B. MorgenkorbDB_DATABASE_URL).
+ * Prisma sucht aber immer nach DATABASE_URL. Also füllen wir die auf,
  * BEVOR der PrismaClient erzeugt wird.
+ *
+ * Die Suche steckt in scripts/db-url.mjs, damit das Build-Skript und die App
+ * garantiert nach denselben Regeln suchen.
  */
-if (!process.env.DATABASE_URL) {
-  const ersatz = [
-    "POSTGRES_PRISMA_URL",
-    "POSTGRES_URL",
-    "DATABASE_URL_UNPOOLED",
-    "POSTGRES_URL_NON_POOLING",
-  ]
-    .map((name) => process.env[name])
-    .find((wert) => wert && wert.trim() !== "");
+import { adresseFuerAbfragen } from "../../scripts/db-url.mjs";
 
-  if (ersatz) process.env.DATABASE_URL = ersatz;
+if (!process.env.DATABASE_URL) {
+  const gefunden = adresseFuerAbfragen(process.env);
+  if (gefunden) process.env.DATABASE_URL = gefunden.wert;
 }
 
 const globalForPrisma = globalThis as unknown as {

@@ -35,9 +35,11 @@ Wichtig: Beim Anlegen **dieses Projekt auswählen** – erst dadurch trägt Verc
 die Zugangsdaten ein. Wenn die Datenbank schon existiert, geht das über
 *Storage → Datenbank öffnen → Connect Project* nach.
 
-Wie die Variable heißt, ist egal: Das Projekt akzeptiert `DATABASE_URL`,
-`POSTGRES_PRISMA_URL` und `POSTGRES_URL`. Fehlt jede davon, sagt das Build-Log
-im Klartext, was zu tun ist.
+Wie die Variable heißt, ist egal. Das Projekt akzeptiert `DATABASE_URL`,
+`POSTGRES_PRISMA_URL` und `POSTGRES_URL` – **auch mit Präfix davor**, wie es
+Vercel beim Anlegen vergibt (z. B. `MorgenkorbDB_DATABASE_URL`). Das Build-Log
+schreibt in die erste Zeile, welche Variable es benutzt. Findet es gar keine,
+steht dort im Klartext, was zu tun ist.
 
 ### 2. Passwörter eintragen
 
