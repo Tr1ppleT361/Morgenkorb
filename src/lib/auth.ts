@@ -15,11 +15,20 @@ import { cookies } from "next/headers";
 
 export const ADMIN_COOKIE = "morgenkorb_admin";
 
+/**
+ * Ist überhaupt ein Admin-Passwort hinterlegt?
+ * Falls nicht (z. B. beim ersten Deployment vergessen), zeigen wir einen
+ * Hinweis statt einer kaputten Seite.
+ */
+export function adminIstEingerichtet(): boolean {
+  return Boolean(process.env.ADMIN_PASSWORD);
+}
+
 function adminPasswort(): string {
   const pw = process.env.ADMIN_PASSWORD;
   if (!pw) {
     throw new Error(
-      "ADMIN_PASSWORD ist nicht gesetzt. Bitte in .env eintragen (siehe .env.example).",
+      "ADMIN_PASSWORD ist nicht gesetzt. Bitte in .env bzw. in den Vercel-Einstellungen eintragen.",
     );
   }
   return pw;
@@ -41,11 +50,13 @@ function sicherGleich(a: string, b: string): boolean {
 
 /** Stimmt das eingegebene Passwort? */
 export function passwortStimmt(eingabe: string): boolean {
+  if (!adminIstEingerichtet()) return false;
   return sicherGleich(eingabe, adminPasswort());
 }
 
 /** Ist der Besucher im Admin-Bereich eingeloggt? */
 export async function istAdmin(): Promise<boolean> {
+  if (!adminIstEingerichtet()) return false;
   const cookieStore = await cookies();
   const wert = cookieStore.get(ADMIN_COOKIE)?.value;
   if (!wert) return false;

@@ -20,11 +20,45 @@ Kein Login für die Besteller, kein Zahlungsdienst – **bezahlt wird bar bei de
 | [Next.js 15](https://nextjs.org) (App Router) | Seiten und Server-Logik |
 | TypeScript | Tippfehler fallen schon beim Schreiben auf |
 | [Tailwind CSS](https://tailwindcss.com) | Styling direkt im HTML |
-| [Prisma](https://prisma.io) + SQLite | Datenbank (später leicht auf Postgres umstellbar) |
+| [Prisma](https://prisma.io) + Postgres | Datenbank |
 
 ---
 
-## Schnellstart (5 Minuten)
+## Online stellen mit Vercel (geht komplett im Browser)
+
+Du brauchst dafür **keinen Computer mit Terminal** – Handy oder Tablet reicht.
+
+### 1. Datenbank anlegen
+
+Im Vercel-Projekt auf **Storage → Create Database → Postgres** (Neon).
+Vercel verbindet die Datenbank automatisch mit dem Projekt und setzt dabei
+die Variable `DATABASE_URL`. Du musst sie **nicht** selbst eintragen.
+
+### 2. Passwörter eintragen
+
+**Settings → Environment Variables**, zwei Stück anlegen:
+
+| Name | Wert |
+| --- | --- |
+| `ADMIN_PASSWORD` | dein Wunschpasswort für `/admin` |
+| `ADMIN_SECRET` | ein langer zufälliger Text (einfach ~40 Zeichen wild tippen) |
+
+### 3. Neu deployen
+
+**Deployments → … → Redeploy.**
+
+Das war's. Beim Bauen passiert automatisch:
+
+1. Die Tabellen werden in der Datenbank angelegt.
+2. Die 100 Produkte werden eingefüllt.
+3. Die Website wird gebaut.
+
+> Der Seed überschreibt **nichts**, wenn schon Produkte da sind. Preise, die du
+> später im Admin änderst, überleben jedes weitere Deployment.
+
+---
+
+## Lokal entwickeln (optional)
 
 Du brauchst **Node.js 18.18 oder neuer** ([nodejs.org](https://nodejs.org)).
 
@@ -38,9 +72,19 @@ npm install
 
 # 3) Einstellungen anlegen
 cp .env.example .env
-#    -> .env öffnen und ADMIN_PASSWORD auf ein eigenes Passwort ändern!
+```
 
-# 4) Datenbank anlegen und mit 100 Produkten füllen
+Jetzt `.env` öffnen und ausfüllen:
+
+- `DATABASE_URL` – am einfachsten dieselbe wie auf Vercel. Die findest du dort
+  unter *Storage → deine Datenbank → .env.local*. Achtung: Du arbeitest dann
+  auf den echten Daten. Sauberer ist eine zweite, kostenlose Datenbank bei
+  [Neon](https://neon.tech) zum Ausprobieren.
+- `ADMIN_PASSWORD` – dein Passwort für `/admin`.
+- `ADMIN_SECRET` – langer Zufallstext.
+
+```bash
+# 4) Tabellen anlegen und die 100 Produkte einfüllen
 npm run setup
 
 # 5) Loslegen
@@ -57,11 +101,12 @@ Der Admin-Bereich liegt unter [http://localhost:3000/admin](http://localhost:300
 | Befehl | Was passiert |
 | --- | --- |
 | `npm run dev` | Entwicklungsserver mit automatischem Neuladen |
-| `npm run build` | Optimierte Version bauen (für den Server) |
+| `npm run build` | Tabellen anlegen, Produkte einfüllen, Website bauen (das macht auch Vercel) |
 | `npm start` | Die gebaute Version starten |
 | `npm run setup` | Datenbank anlegen **und** Produkte einfüllen |
 | `npm run db:push` | Datenbank an das Schema anpassen |
-| `npm run db:seed` | Die 100 Produkte einfüllen (überschreibt Preise) |
+| `npm run db:seed` | Die 100 Produkte einfüllen (tut nichts, wenn schon welche da sind) |
+| `npm run db:seed -- --force` | Startsortiment erzwingen – **überschreibt geänderte Preise** |
 | `npm run db:studio` | Datenbank im Browser anschauen (Prisma Studio) |
 
 ---
@@ -71,10 +116,14 @@ Der Admin-Bereich liegt unter [http://localhost:3000/admin](http://localhost:300
 ### `.env` (geheim, wird **nicht** mit hochgeladen)
 
 ```bash
-DATABASE_URL="file:./dev.db"       # Ort der Datenbank
+DATABASE_URL="postgresql://..."    # Adresse der Datenbank
 ADMIN_PASSWORD="dein-passwort"     # Passwort für /admin
 ADMIN_SECRET="langer-zufallstext"  # sichert das Login-Cookie ab
 ```
+
+Auf Vercel stehen dieselben drei Variablen unter *Settings → Environment
+Variables*. `DATABASE_URL` setzt Vercel selbst, wenn du die Postgres-Datenbank
+über *Storage* anlegst.
 
 Einen guten `ADMIN_SECRET` bekommst du mit:
 
@@ -156,63 +205,28 @@ src/
 
 ---
 
-## Später auf Postgres wechseln
+## Warum Postgres und nicht SQLite?
 
-Das Schema benutzt absichtlich nur Dinge, die SQLite **und** Postgres können.
-Der Umzug hat drei Schritte:
+SQLite speichert alles in **einer Datei**. Das ist praktisch – aber Vercel
+setzt das Dateisystem nach kurzer Zeit zurück. Die Datei wäre also regelmäßig
+weg, samt aller Bestellungen. Postgres läuft als eigener Dienst daneben und
+bleibt erhalten.
 
-1. In `prisma/schema.prisma` den Provider ändern:
-
-   ```prisma
-   datasource db {
-     provider = "postgresql"   // vorher: "sqlite"
-     url      = env("DATABASE_URL")
-   }
-   ```
-
-2. In `.env` die neue Adresse eintragen:
-
-   ```bash
-   DATABASE_URL="postgresql://benutzer:passwort@host:5432/morgenkorb?schema=public"
-   ```
-
-3. Tabellen anlegen und Produkte einfüllen:
-
-   ```bash
-   npx prisma db push
-   npm run db:seed
-   ```
+Falls du das Projekt später doch auf einem eigenen Rechner (Raspberry Pi,
+alter Laptop) betreiben willst, kannst du zu SQLite zurück: In
+`prisma/schema.prisma` `provider = "sqlite"` setzen, in `.env`
+`DATABASE_URL="file:./dev.db"` eintragen, dann `npm run setup`. Das Schema
+benutzt absichtlich nur Dinge, die beide Datenbanken können.
 
 ---
 
-## Online stellen (Deployment)
-
-### Variante A: Vercel + Postgres (empfohlen)
-
-SQLite funktioniert auf Vercel nicht dauerhaft, weil das Dateisystem dort nach
-jedem Aufruf zurückgesetzt wird. Nimm deshalb eine echte Datenbank – z. B.
-[Neon](https://neon.tech) oder Vercel Postgres, beide haben ein Gratis-Angebot.
-
-1. Erst wie oben auf **Postgres** umstellen und die Änderung committen.
-2. Projekt auf [vercel.com](https://vercel.com) importieren.
-3. Unter *Settings → Environment Variables* eintragen:
-   `DATABASE_URL`, `ADMIN_PASSWORD`, `ADMIN_SECRET`.
-4. Deployen. Danach einmal lokal – mit der Postgres-`DATABASE_URL` in der
-   `.env` – die Tabellen anlegen und die Produkte einfüllen:
-
-   ```bash
-   npx prisma db push
-   npm run db:seed
-   ```
-
-### Variante B: Eigener Server / Raspberry Pi (SQLite reicht)
+## Auf einem eigenen Server statt Vercel
 
 ```bash
 git clone https://github.com/Tr1ppleT361/Morgenkorb.git
 cd Morgenkorb
 npm install
-cp .env.example .env      # Passwort setzen!
-npm run setup
+cp .env.example .env      # DATABASE_URL und Passwort setzen!
 npm run build
 npm start                 # läuft auf Port 3000
 ```
@@ -225,9 +239,6 @@ npm install -g pm2
 pm2 start "npm start" --name morgenkorb
 pm2 save
 ```
-
-**Bitte denk daran:** Vergiss nicht, die Datei `prisma/dev.db` regelmäßig zu
-sichern – da stecken alle Bestellungen drin.
 
 ---
 
@@ -251,3 +262,17 @@ wurde nichts.
 
 **Kann jemand nach 20:00 Uhr doch noch bestellen?**
 Nein. Auch wenn jemand im Browser trickst, lehnt der Server die Bestellung ab.
+
+**Die Seite zeigt „Application error: a server-side exception".**
+Meistens fehlt die `DATABASE_URL` oder die Datenbank ist nicht verbunden.
+Schau bei Vercel unter *Deployments → dein Deployment → Runtime Logs*, dort
+steht die genaue Ursache. Prüf danach unter *Storage*, ob die Datenbank mit dem
+Projekt verbunden ist, und deploye neu.
+
+**`/admin` sagt „Admin noch nicht eingerichtet".**
+Dann fehlt `ADMIN_PASSWORD` in den Environment Variables. Eintragen und einmal
+neu deployen.
+
+**Muss ich bei jedem Deployment die Produkte neu einfüllen?**
+Nein, das passiert automatisch beim Bauen – und nur beim allerersten Mal, wenn
+die Datenbank noch leer ist.

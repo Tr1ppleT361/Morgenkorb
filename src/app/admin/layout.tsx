@@ -4,7 +4,7 @@
  * statt der Seite einfach das Login-Formular.
  */
 import Link from "next/link";
-import { istAdmin } from "@/lib/auth";
+import { adminIstEingerichtet, istAdmin } from "@/lib/auth";
 import { LoginFormular } from "./LoginFormular";
 import { ausloggen } from "./actions";
 import { AdminNavigation } from "./AdminNavigation";
@@ -16,6 +16,26 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Kein Passwort hinterlegt? Dann sagen wir das deutlich, statt eine
+  // Login-Maske zu zeigen, bei der sich niemand anmelden könnte.
+  if (!adminIstEingerichtet()) {
+    return (
+      <main className="mx-auto max-w-sm px-4 py-16">
+        <div className="karte p-6">
+          <h1 className="text-xl font-bold">Admin noch nicht eingerichtet</h1>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+            Es ist kein Admin-Passwort hinterlegt. Trage die Umgebungsvariable{" "}
+            <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">
+              ADMIN_PASSWORD
+            </code>{" "}
+            ein – lokal in der Datei <code>.env</code>, auf Vercel unter
+            Settings → Environment Variables. Danach einmal neu deployen.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   if (!(await istAdmin())) {
     return <LoginFormular />;
   }

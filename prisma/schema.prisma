@@ -1,18 +1,19 @@
 // Prisma-Schema für Morgenkorb.
 //
-// Wechsel auf Postgres später:
-//   1. provider unten auf "postgresql" ändern
-//   2. DATABASE_URL in .env auf die Postgres-URL setzen
-//   3. `npx prisma migrate dev` (oder `prisma db push`) ausführen
-// Wir benutzen absichtlich nur Datentypen, die SQLite UND Postgres können
-// (z. B. String statt enum), damit der Umzug einfach bleibt.
+// Wir benutzen Postgres, weil die App auf Vercel läuft. Vercel setzt das
+// Dateisystem regelmäßig zurück – eine SQLite-Datei wäre dort nach kurzer
+// Zeit weg, samt aller Bestellungen. Postgres läuft als eigener Dienst
+// daneben und bleibt erhalten.
+//
+// Die DATABASE_URL kommt aus den Umgebungsvariablen (lokal aus .env,
+// auf Vercel aus den Project Settings).
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

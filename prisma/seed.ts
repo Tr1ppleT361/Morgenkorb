@@ -4,8 +4,11 @@
  * Ausführen mit:  npm run db:seed
  *
  * Wichtig: alle Preise stehen in CENT (79 = 0,79 €).
- * Das Skript ist "idempotent" – man kann es mehrfach laufen lassen,
- * vorhandene Produkte werden dann nur aktualisiert (upsert).
+ *
+ * Das Skript läuft bei jedem Deployment automatisch mit. Damit es dabei
+ * NICHT deine im Admin geänderten Preise überschreibt, macht es nichts,
+ * sobald schon Produkte in der Datenbank stehen.
+ * Wirklich neu einspielen kannst du mit:  npm run db:seed -- --force
  */
 import { PrismaClient } from "@prisma/client";
 
@@ -128,6 +131,19 @@ const sortiment: Record<string, Eintrag[]> = {
 };
 
 async function main() {
+  // --force erzwingt das Einspielen, auch wenn schon Produkte da sind
+  const erzwingen =
+    process.argv.includes("--force") || process.env.FORCE_SEED === "1";
+
+  const vorhanden = await prisma.product.count();
+  if (vorhanden > 0 && !erzwingen) {
+    console.log(
+      `↩︎  ${vorhanden} Produkte sind schon da – Seed übersprungen. ` +
+        `(Zum Überschreiben: npm run db:seed -- --force)`,
+    );
+    return;
+  }
+
   let anzahl = 0;
 
   for (const [kategorie, produkte] of Object.entries(sortiment)) {
