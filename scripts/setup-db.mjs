@@ -73,6 +73,12 @@ lauf("Prisma Client erzeugen", "npx", ["prisma", "generate"], {
   DATABASE_URL: abfragen.wert,
 });
 
+// Ältere Datenbanken auf das neue Schema vorbereiten (siehe Datei).
+// Auf einer frischen Datenbank passiert hier nichts.
+lauf("Datenbank vorbereiten", "node", ["scripts/vor-migration.mjs"], {
+  DATABASE_URL: tabellen.wert,
+});
+
 lauf("Tabellen anlegen/angleichen", "npx", ["prisma", "db", "push", "--skip-generate"], {
   DATABASE_URL: tabellen.wert,
 });

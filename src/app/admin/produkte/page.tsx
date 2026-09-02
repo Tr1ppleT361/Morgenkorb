@@ -1,24 +1,44 @@
 /**
- * Admin-Ansicht "Produkte": anlegen, bearbeiten, aktiv/inaktiv schalten.
+ * Admin: Produkte anlegen, bearbeiten, löschen, Sorten pflegen,
+ * veröffentlichen oder verstecken.
  */
 import { prisma } from "@/lib/prisma";
-import { config } from "@/config";
 import { ProduktVerwaltung } from "./ProduktVerwaltung";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProdukteSeite() {
-  const produkte = await prisma.product.findMany({
-    orderBy: [{ kategorie: "asc" }, { name: "asc" }],
-  });
+  const [produkte, kategorien] = await Promise.all([
+    prisma.product.findMany({
+      orderBy: [{ category: { sortierung: "asc" } }, { name: "asc" }],
+      include: {
+        category: true,
+        varianten: { orderBy: [{ sortierung: "asc" }, { name: "asc" }] },
+      },
+    }),
+    prisma.category.findMany({ orderBy: { sortierung: "asc" } }),
+  ]);
 
-  // Vorschläge für das Kategorie-Feld: alles, was es schon gibt
-  const kategorien = Array.from(
-    new Set([
-      ...config.kategorienReihenfolge,
-      ...produkte.map((p) => p.kategorie),
-    ]),
+  return (
+    <ProduktVerwaltung
+      produkte={produkte.map((p) => ({
+        id: p.id,
+        name: p.name,
+        preis: p.preis,
+        einkauf: p.einkauf,
+        bildUrl: p.bildUrl,
+        aktiv: p.aktiv,
+        categoryId: p.categoryId,
+        kategorie: p.category.name,
+        varianten: p.varianten.map((v) => ({
+          id: v.id,
+          name: v.name,
+          preis: v.preis,
+          einkauf: v.einkauf,
+          aktiv: v.aktiv,
+        })),
+      }))}
+      kategorien={kategorien.map((k) => ({ id: k.id, name: k.name }))}
+    />
   );
-
-  return <ProduktVerwaltung produkte={produkte} kategorien={kategorien} />;
 }

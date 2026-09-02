@@ -7,15 +7,17 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Gruppe, Produkt } from "@/app/page";
+import type { FensterStatus } from "@/lib/bestellschluss";
+import { schluessel, zerlegen } from "@/lib/warenkorb";
 import { euro } from "@/lib/geld";
 import { config } from "@/config";
 import { bestellungAufgeben } from "@/app/actions";
-import { ProduktKachel, Zeichen } from "./ProduktKachel";
+import { ProduktKachel, SortenFenster, Zeichen } from "./ProduktKachel";
 import { KategorieIcon, kategorieTon } from "./KategorieIcon";
 import { KorbZeichen } from "./Logo";
 
-/** Warenkorb: Produkt-ID -> Menge */
-type Warenkorb = Record<number, number>;
+/** Warenkorb: Schlüssel (siehe lib/warenkorb.ts) -> Menge */
+type Warenkorb = Record<string, number>;
 
 const SPEICHER_KEY = "morgenkorb_warenkorb";
 
@@ -30,18 +32,15 @@ function alsAnker(text: string) {
 
 export function Bestellseite({
   gruppen,
-  offen,
-  schlussText,
-  minutenRest,
+  fenster,
   nutzer,
 }: {
   gruppen: Gruppe[];
-  offen: boolean;
-  schlussText: string;
-  minutenRest: number;
+  fenster: FensterStatus;
   /** Angemeldeter Nutzer – dann sind Name und Klasse schon ausgefüllt */
   nutzer?: { name: string; klasse: string } | null;
 }) {
+  const offen = fenster.offen;
   const router = useRouter();
   const [suche, setSuche] = useState("");
   const [warenkorb, setWarenkorb] = useState<Warenkorb>({});
@@ -49,6 +48,8 @@ export function Bestellseite({
   const [fehler, setFehler] = useState<string | null>(null);
   const [sendet, starteSenden] = useTransition();
 
+  const [sortenProdukt, setSortenProdukt] = useState<Produkt | null>(null);
+  const [zahlart, setZahlart] = useState<"BAR" | "KARTE">("BAR");
   const [name, setName] = useState(nutzer?.name ?? "");
   const [klasse, setKlasse] = useState(nutzer?.klasse ?? "");
   const [notiz, setNotiz] = useState("");
@@ -105,30 +106,60 @@ export function Bestellseite({
       .filter((g) => g.produkte.length > 0);
   }, [gruppen, suche]);
 
-  const positionen = useMemo(
-    () =>
-      Object.entries(warenkorb)
-        .map(([id, menge]) => ({ produkt: produktMap.get(Number(id)), menge }))
-        .filter(
-          (p): p is { produkt: Produkt; menge: number } => !!p.produkt && p.menge > 0,
-        )
-        .sort((a, b) => a.produkt.name.localeCompare(b.produkt.name, "de")),
-    [warenkorb, produktMap],
-  );
+  // Aus den Schlüsseln im Warenkorb die echten Produkte und Sorten holen
+  const positionen = useMemo(() => {
+    const liste: {
+      key: string;
+      produkt: Produkt;
+      variante: { id: number; name: string; preis: number } | null;
+      menge: number;
+      preis: number;
+    }[] = [];
+
+    for (const [key, menge] of Object.entries(warenkorb)) {
+      if (menge <= 0) continue;
+      const teile = zerlegen(key);
+      if (!teile) continue;
+      const produkt = produktMap.get(teile.productId);
+      if (!produkt) continue;
+
+      const variante = teile.variantId
+        ? (produkt.varianten.find((v) => v.id === teile.variantId) ?? null)
+        : null;
+
+      // Sorte gewählt, gibt es aber nicht mehr -> Eintrag überspringen
+      if (teile.variantId && !variante) continue;
+
+      liste.push({
+        key,
+        produkt,
+        variante,
+        menge,
+        preis: variante ? variante.preis : produkt.preis,
+      });
+    }
+
+    return liste.sort((a, b) =>
+      `${a.produkt.name} ${a.variante?.name ?? ""}`.localeCompare(
+        `${b.produkt.name} ${b.variante?.name ?? ""}`,
+        "de",
+      ),
+    );
+  }, [warenkorb, produktMap]);
 
   const anzahl = positionen.reduce((s, p) => s + p.menge, 0);
-  const summe = positionen.reduce((s, p) => s + p.menge * p.produkt.preis, 0);
+  const summe = positionen.reduce((s, p) => s + p.menge * p.preis, 0);
 
-  function aendern(id: number, delta: number) {
+  function aendern(key: string, delta: number) {
     setFehler(null);
     setWarenkorb((alt) => {
       const neu = { ...alt };
       const menge = Math.min(
         config.maxMengeProProdukt,
-        Math.max(0, (neu[id] ?? 0) + delta),
+        Math.max(0, (neu[key] ?? 0) + delta),
       );
-      if (menge === 0) delete neu[id];
-      else neu[id] = menge;
+      if (menge === 0) delete neu[key];
+      else neu[key] = menge;
       return neu;
     });
   }
@@ -142,8 +173,10 @@ export function Bestellseite({
         name,
         klasse,
         notiz,
+        zahlart,
         positionen: positionen.map((p) => ({
           productId: p.produkt.id,
+          variantId: p.variante?.id ?? null,
           menge: p.menge,
         })),
       });
@@ -166,8 +199,7 @@ export function Bestellseite({
 
   return (
     <main className="mx-auto max-w-5xl px-4 pb-36 pt-4">
-      {offen ? <Begruessung schlussText={schlussText} minutenRest={minutenRest} />
-             : <GeschlossenHinweis schlussText={schlussText} />}
+      {offen ? <Begruessung fenster={fenster} /> : <GeschlossenHinweis fenster={fenster} />}
 
       {/* Suche + Kategorien, bleiben beim Scrollen oben kleben */}
       <div className="sticky top-[69px] z-20 -mx-4 bg-grund/90 px-4 pb-3 pt-3 backdrop-blur-md">
@@ -227,9 +259,10 @@ export function Bestellseite({
               <ProduktKachel
                 key={p.id}
                 produkt={p}
-                menge={warenkorb[p.id] ?? 0}
+                mengen={warenkorb}
                 gesperrt={!offen}
-                onAendern={(d) => aendern(p.id, d)}
+                onAendern={aendern}
+                onSortenWaehlen={setSortenProdukt}
               />
             ))}
           </ul>
@@ -268,14 +301,8 @@ export function Bestellseite({
 
 /* ------------------------------------------------------------------ Teile */
 
-function Begruessung({
-  schlussText,
-  minutenRest,
-}: {
-  schlussText: string;
-  minutenRest: number;
-}) {
-  const knapp = minutenRest > 0 && minutenRest <= 60;
+function Begruessung({ fenster }: { fenster: FensterStatus }) {
+  const knapp = fenster.minutenRest > 0 && fenster.minutenRest <= 60;
   return (
     <div className="flex items-center gap-3 py-1">
       <div className="min-w-0 flex-1">
@@ -291,7 +318,7 @@ function Begruessung({
             }
           >
             <UhrZeichen className="h-3.5 w-3.5" />
-            {knapp ? `Noch ${minutenRest} Min.` : `bis ${schlussText} Uhr`}
+            {knapp ? `Noch ${fenster.minutenRest} Min.` : `bis ${fenster.ende} Uhr`}
           </span>
         </p>
       </div>
@@ -300,21 +327,32 @@ function Begruessung({
   );
 }
 
-function GeschlossenHinweis({ schlussText }: { schlussText: string }) {
+function GeschlossenHinweis({ fenster }: { fenster: FensterStatus }) {
+  // Je nach Grund eine passende Meldung
+  const { titel, text } =
+    fenster.grund === "pausiert"
+      ? {
+          titel: "Bestellungen sind gerade pausiert",
+          text: "Der Einkauf macht heute eine Pause. Stöbern geht trotzdem.",
+        }
+      : fenster.grund === "zu_frueh"
+        ? {
+            titel: `Bestellungen öffnen um ${fenster.start} Uhr`,
+            text: `Täglich von ${fenster.start} bis ${fenster.ende} Uhr kannst du bestellen. Schau dich solange schon um.`,
+          }
+        : {
+            titel: "Bestellungen für morgen sind geschlossen",
+            text: `Bestellschluss ist täglich um ${fenster.ende} Uhr. Ab ${fenster.start} Uhr geht es wieder los.`,
+          };
+
   return (
     <div className="karte flex items-start gap-4 border-beere/40 p-5">
       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-weich bg-beere/10 text-beere">
         <MondZeichen className="h-5 w-5" />
       </span>
       <div>
-        <h1 className="font-titel text-xl font-bold">
-          Bestellungen für morgen sind geschlossen
-        </h1>
-        <p className="mt-1 text-sm text-leise">
-          Bestellschluss ist täglich um {schlussText} Uhr. Schau morgen früh
-          wieder vorbei – dann kannst du für den nächsten Tag bestellen.
-          Stöbern geht natürlich trotzdem.
-        </p>
+        <h1 className="font-titel text-xl font-bold">{titel}</h1>
+        <p className="mt-1 text-sm text-leise">{text}</p>
       </div>
     </div>
   );
@@ -382,7 +420,13 @@ function KorbFenster({
   onAendern,
   onAbsenden,
 }: {
-  positionen: { produkt: Produkt; menge: number }[];
+  positionen: {
+    key: string;
+    produkt: Produkt;
+    variante: { id: number; name: string; preis: number } | null;
+    menge: number;
+    preis: number;
+  }[];
   summe: number;
   anzahl: number;
   name: string;
@@ -395,7 +439,7 @@ function KorbFenster({
   setKlasse: (v: string) => void;
   setNotiz: (v: string) => void;
   onSchliessen: () => void;
-  onAendern: (id: number, delta: number) => void;
+  onAendern: (key: string, delta: number) => void;
   onAbsenden: (e: React.FormEvent) => void;
 }) {
   return (
@@ -422,28 +466,36 @@ function KorbFenster({
 
         {/* Positionen */}
         <ul className="karte divide-y divide-linie overflow-hidden">
-          {positionen.map(({ produkt, menge }) => (
-            <li key={produkt.id} className="flex items-center gap-3 p-3">
+          {positionen.map((pos) => (
+            <li key={pos.key} className="flex items-center gap-3 p-3">
               <span
                 className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-weich"
-                style={{ color: kategorieTon(produkt.kategorie) }}
+                style={{ color: kategorieTon(pos.produkt.kategorie) }}
               >
                 <span className="absolute inset-0 bg-current opacity-[0.12]" />
                 <KategorieIcon
-                  kategorie={produkt.kategorie}
-                  variante={produkt.id}
+                  kategorie={pos.produkt.kategorie}
+                  variante={pos.produkt.id}
                   className="h-7 w-7"
                 />
               </span>
 
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{produkt.name}</p>
+                <p className="truncate text-sm font-semibold">
+                  {pos.produkt.name}
+                  {pos.variante && (
+                    <span className="font-normal text-leise">
+                      {" "}
+                      · {pos.variante.name}
+                    </span>
+                  )}
+                </p>
                 <p className="text-sm text-leise ziffern">
                   <span className="font-semibold text-tinte">
-                    {euro(menge * produkt.preis)}
+                    {euro(pos.menge * pos.preis)}
                   </span>
                   <span className="ml-1.5 text-xs">
-                    ({euro(produkt.preis)} je Stück)
+                    ({euro(pos.preis)} je Stück)
                   </span>
                 </p>
               </div>
@@ -451,17 +503,19 @@ function KorbFenster({
               <div className="flex shrink-0 items-center gap-0.5 rounded-full border border-linie bg-grund p-0.5">
                 <button
                   type="button"
-                  aria-label={`Ein ${produkt.name} weniger`}
-                  onClick={() => onAendern(produkt.id, -1)}
+                  aria-label={`Ein ${pos.produkt.name} weniger`}
+                  onClick={() => onAendern(pos.key, -1)}
                   className="flex h-8 w-8 items-center justify-center rounded-full bg-karte text-tinte shadow-sanft transition hover:bg-honigHell"
                 >
                   <Zeichen art="minus" className="h-3.5 w-3.5" />
                 </button>
-                <span className="w-5 text-center text-sm font-bold ziffern">{menge}</span>
+                <span className="w-5 text-center text-sm font-bold ziffern">
+                  {pos.menge}
+                </span>
                 <button
                   type="button"
-                  aria-label={`Ein ${produkt.name} mehr`}
-                  onClick={() => onAendern(produkt.id, 1)}
+                  aria-label={`Ein ${pos.produkt.name} mehr`}
+                  onClick={() => onAendern(pos.key, 1)}
                   className="flex h-8 w-8 items-center justify-center rounded-full bg-honig text-white transition hover:brightness-110"
                 >
                   <Zeichen art="plus" className="h-3.5 w-3.5" />

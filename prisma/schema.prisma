@@ -17,19 +17,58 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Eine Kategorie im Sortiment. Im Admin anlegbar und löschbar.
+model Category {
+  id         Int     @id @default(autoincrement())
+  name       String  @unique
+  /// kleinere Zahl = weiter oben im Shop
+  sortierung Int     @default(100)
+  aktiv      Boolean @default(true)
+
+  produkte Product[]
+
+  @@index([sortierung])
+}
+
 /// Ein Produkt aus dem Sortiment.
 model Product {
-  id        Int     @id @default(autoincrement())
-  name      String  @unique
-  /// Preis in CENT (Integer!), niemals als Kommazahl speichern.
-  preis     Int
-  kategorie String
-  bildUrl   String?
-  aktiv     Boolean @default(true)
+  id   Int    @id @default(autoincrement())
+  name String @unique
+  /// Verkaufspreis in CENT (Integer!), niemals als Kommazahl speichern.
+  /// Bei Produkten mit Varianten ist das der Preis der ersten Variante.
+  preis Int
+  /// Einkaufspreis in Cent – nur für die Margenrechnung im Admin.
+  einkauf Int?
 
-  items OrderItem[]
+  categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id])
 
-  @@index([kategorie])
+  bildUrl String?
+  aktiv   Boolean @default(true)
+
+  varianten ProductVariant[]
+  items     OrderItem[]
+
+  @@index([categoryId])
+}
+
+/// Eine Sorte innerhalb eines Produkts, z. B. Fanta "Orange" / "Exotic".
+/// Varianten dürfen unterschiedlich viel kosten.
+model ProductVariant {
+  id         Int     @id @default(autoincrement())
+  productId  Int
+  name       String
+  /// Verkaufspreis in Cent für genau diese Sorte
+  preis      Int
+  einkauf    Int?
+  aktiv      Boolean @default(true)
+  sortierung Int     @default(100)
+
+  product Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  items   OrderItem[]
+
+  @@unique([productId, name])
+  @@index([productId])
 }
 
 /// Eine Bestellung von einer Person für einen Tag.
@@ -51,6 +90,18 @@ model Order {
   /// EINGEGANGEN | IN_BEARBEITUNG | VERSENDET | ZUGESTELLT | STORNIERT
   status   String   @default("EINGEGANGEN")
   statusAm DateTime @default(now())
+
+  /// Wie wird bezahlt? BAR (bei Übergabe) oder KARTE (Stripe)
+  zahlart String @default("BAR")
+  /// OFFEN | BEZAHLT | FEHLGESCHLAGEN | ERSTATTET
+  /// Bei Karte setzt das ausschließlich der Stripe-Webhook.
+  zahlstatus String    @default("OFFEN")
+  bezahltAm  DateTime?
+
+  /// Stripe-Kennungen. Die Session-ID ist einmalig, damit ein doppelt
+  /// zugestellter Webhook nicht doppelt verbucht.
+  stripeSessionId       String? @unique
+  stripePaymentIntentId String?
 
   items    OrderItem[]
   verlauf  OrderStatus[]
@@ -91,8 +142,39 @@ model User {
   rolle        String   @default("BESTELLER")
   erstelltAm   DateTime @default(now())
 
+  /// Wann wurde die E-Mail bestätigt? Solange leer, ist das Konto
+  /// angelegt, aber noch nicht freigeschaltet.
+  emailVerifiziertAm DateTime?
+
   sitzungen Session[]
   orders    Order[]
+  codes     VerificationCode[]
+}
+
+/// Ein Bestätigungscode für die E-Mail-Verifizierung.
+/// Gespeichert wird nur der Hash – wer die Datenbank liest, kennt den
+/// Code trotzdem nicht.
+model VerificationCode {
+  id         String   @id @default(cuid())
+  userId     String
+  codeHash   String
+  laeuftAbAm DateTime
+  /// Fehlversuche – nach zu vielen ist der Code verbrannt
+  versuche   Int      @default(0)
+  erstelltAm DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([laeuftAbAm])
+}
+
+/// Einstellungen, die der Admin über die Website ändern kann –
+/// z. B. das Bestellzeitfenster. Damit steht nichts mehr fest im Code.
+model Setting {
+  schluessel String   @id
+  wert       String
+  geaendert  DateTime @updatedAt
 }
 
 /// Eine angemeldete Sitzung ("eingeloggt bleiben").
@@ -116,14 +198,21 @@ model OrderItem {
   id        Int    @id @default(autoincrement())
   orderId   String
   productId Int
+  /// Welche Sorte? Leer bei Produkten ohne Varianten.
+  variantId Int?
+  /// Name der Sorte zum Bestellzeitpunkt – bleibt auch, wenn die
+  /// Variante später gelöscht wird.
+  variantName String?
   menge     Int
   /// Preis in Cent zum Zeitpunkt der Bestellung – so bleibt die alte
   /// Bestellung korrekt, auch wenn sich der Produktpreis später ändert.
   preisBeimKauf Int
 
-  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id])
+  order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id])
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
   @@index([productId])
+  @@index([variantId])
 }

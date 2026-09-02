@@ -16,7 +16,7 @@ export default async function EinkaufslistenSeite() {
   // Alle Positionen aus noch nicht abgeschlossenen Bestellungen
   const positionen = await prisma.orderItem.findMany({
     where: { order: { abgeschlossen: false } },
-    include: { product: true },
+    include: { product: { include: { category: true } } },
   });
 
   const bestellungenAnzahl = await prisma.order.count({
@@ -30,11 +30,16 @@ export default async function EinkaufslistenSeite() {
   >();
 
   for (const p of positionen) {
-    const vorher = map.get(p.productId);
+    // Sorten getrennt zählen: "3x Fanta Orange" statt nur "3x Fanta"
+    const schluessel = p.variantId ?? p.productId;
+    const anzeigeName = p.variantName
+      ? `${p.product.name} – ${p.variantName}`
+      : p.product.name;
+    const vorher = map.get(schluessel);
     const menge = (vorher?.menge ?? 0) + p.menge;
-    map.set(p.productId, {
-      name: p.product.name,
-      kategorie: p.product.kategorie,
+    map.set(schluessel, {
+      name: anzeigeName,
+      kategorie: p.product.category.name,
       menge,
       summe: (vorher?.summe ?? 0) + p.menge * p.preisBeimKauf,
     });

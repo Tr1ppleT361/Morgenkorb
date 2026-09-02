@@ -3,14 +3,17 @@
 /**
  * Server Actions für die Bestellseite.
  * "use server" heißt: dieser Code läuft NUR auf dem Server, nie im Browser.
- * Deshalb dürfen wir hier auf die Datenbank zugreifen.
  */
 import { prisma } from "@/lib/prisma";
-import { bestellungenOffen, bestellschlussText } from "@/lib/bestellschluss";
+import { bestellfenster } from "@/lib/bestellschluss";
 import { config } from "@/config";
 import { aktuellerNutzer } from "@/lib/auth";
 
-export type Bestellposition = { productId: number; menge: number };
+export type Bestellposition = {
+  productId: number;
+  variantId?: number | null;
+  menge: number;
+};
 
 export type BestellErgebnis =
   | { ok: true; orderId: string }
@@ -21,19 +24,26 @@ export async function bestellungAufgeben(daten: {
   klasse: string;
   notiz?: string;
   positionen: Bestellposition[];
+  /** "BAR" oder "KARTE" – bei Karte geht es danach zu Stripe weiter */
+  zahlart?: string;
 }): Promise<BestellErgebnis> {
-  // 1) Bestellschluss prüfen – NICHT nur im Browser, sonst könnte man ihn umgehen.
-  if (!bestellungenOffen()) {
-    return {
-      ok: false,
-      fehler: `Bestellungen für morgen sind geschlossen (Bestellschluss ${bestellschlussText()} Uhr).`,
-    };
+  // 1) Bestellfenster prüfen – NICHT nur im Browser, sonst wäre es umgehbar.
+  const fenster = await bestellfenster();
+  if (!fenster.offen) {
+    const grund =
+      fenster.grund === "pausiert"
+        ? "Bestellungen sind gerade pausiert."
+        : fenster.grund === "zu_frueh"
+          ? `Bestellungen sind erst ab ${fenster.start} Uhr möglich.`
+          : `Bestellungen für morgen sind geschlossen (Bestellschluss ${fenster.ende} Uhr).`;
+    return { ok: false, fehler: grund };
   }
 
   // 2) Eingaben säubern und prüfen
   const name = daten.name.trim();
   const klasse = daten.klasse.trim();
   const notiz = daten.notiz?.trim() || null;
+  const zahlart = daten.zahlart === "KARTE" ? "KARTE" : "BAR";
 
   if (name.length < 2) return { ok: false, fehler: "Bitte gib deinen Namen an." };
   if (name.length > 60) return { ok: false, fehler: "Der Name ist zu lang." };
@@ -58,26 +68,61 @@ export async function bestellungAufgeben(daten: {
   // 3) Preise IMMER frisch aus der Datenbank holen.
   //    Was der Browser schickt, könnte manipuliert sein.
   const produkte = await prisma.product.findMany({
-    where: { id: { in: positionen.map((p) => p.productId) }, aktiv: true },
+    where: {
+      id: { in: positionen.map((p) => p.productId) },
+      aktiv: true,
+      category: { aktiv: true },
+    },
+    include: { varianten: { where: { aktiv: true } } },
   });
+  const produktMap = new Map(produkte.map((p) => [p.id, p]));
 
-  const preisMap = new Map(produkte.map((p) => [p.id, p.preis]));
-  const items = positionen
-    .filter((p) => preisMap.has(p.productId))
-    .map((p) => ({
-      productId: p.productId,
-      menge: p.menge,
-      preisBeimKauf: preisMap.get(p.productId)!,
-    }));
+  const items: {
+    productId: number;
+    variantId: number | null;
+    variantName: string | null;
+    menge: number;
+    preisBeimKauf: number;
+  }[] = [];
+
+  for (const p of positionen) {
+    const produkt = produktMap.get(p.productId);
+    if (!produkt) continue; // Produkt gibt es nicht mehr
+
+    if (produkt.varianten.length > 0) {
+      // Produkt hat Sorten -> es MUSS eine gewählt sein
+      const variante = produkt.varianten.find((v) => v.id === p.variantId);
+      if (!variante) {
+        return {
+          ok: false,
+          fehler: `Bitte wähle bei „${produkt.name}" eine Sorte aus.`,
+        };
+      }
+      items.push({
+        productId: produkt.id,
+        variantId: variante.id,
+        variantName: variante.name,
+        menge: p.menge,
+        preisBeimKauf: variante.preis,
+      });
+    } else {
+      items.push({
+        productId: produkt.id,
+        variantId: null,
+        variantName: null,
+        menge: p.menge,
+        preisBeimKauf: produkt.preis,
+      });
+    }
+  }
 
   if (items.length === 0)
     return { ok: false, fehler: "Die gewählten Produkte gibt es nicht mehr." };
 
-  // 4) Wer bestellt? Wenn angemeldet, hängen wir die Bestellung ans Konto –
-  //    dann taucht sie später unter "Deine Bestellungen" auf.
+  // 4) Wer bestellt? Wenn angemeldet, hängen wir die Bestellung ans Konto.
   const nutzer = await aktuellerNutzer();
 
-  // 5) Bestellung, Positionen und den ersten Statuseintrag speichern
+  // 5) Bestellung, Positionen und ersten Statuseintrag speichern
   const bestellung = await prisma.order.create({
     data: {
       name,
@@ -85,6 +130,8 @@ export async function bestellungAufgeben(daten: {
       notiz,
       userId: nutzer?.id ?? null,
       status: "EINGEGANGEN",
+      zahlart,
+      zahlstatus: "OFFEN",
       items: { create: items },
       verlauf: { create: { status: "EINGEGANGEN" } },
     },

@@ -9,8 +9,10 @@ const links = [
   { href: "/admin/einkauf", label: "Einkaufsliste" },
   { href: "/admin/kunden", label: "Kunden" },
   { href: "/admin/produkte", label: "Produkte" },
+  { href: "/admin/kategorien", label: "Kategorien" },
   { href: "/admin/kasse", label: "Kasse" },
   { href: "/admin/archiv", label: "Archiv" },
+  { href: "/admin/einstellungen", label: "Zeiten" },
 ];
 
 /** Reiter-Navigation im Admin-Bereich. */

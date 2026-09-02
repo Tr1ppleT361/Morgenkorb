@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { euro, summeCent } from "@/lib/geld";
-import { bestellschlussText, bestellungenOffen } from "@/lib/bestellschluss";
+import { bestellfenster } from "@/lib/bestellschluss";
 import { STATUS_REIHE, statusText, STATUS_KLASSEN } from "@/lib/status";
 import { adminIstEingerichtet } from "@/lib/auth";
 
@@ -42,7 +42,7 @@ export default async function AdminUebersicht() {
     anzahl: offene.filter((b) => b.status === status).length,
   }));
 
-  const offenesFenster = bestellungenOffen();
+  const fenster = await bestellfenster();
 
   return (
     <div className="space-y-5">
@@ -71,25 +71,31 @@ export default async function AdminUebersicht() {
       </div>
 
       {/* Bestellfenster */}
-      <div className="karte flex items-center gap-3 p-4">
+      <Link
+        href="/admin/einstellungen"
+        className="karte flex items-center gap-3 p-4 transition hover:border-honig"
+      >
         <span
           className={
             "h-3 w-3 shrink-0 rounded-full " +
-            (offenesFenster ? "bg-moos" : "bg-leise")
+            (fenster.offen ? "bg-moos" : "bg-leise")
           }
         />
         <div className="min-w-0 flex-1">
           <p className="font-semibold">
-            {offenesFenster
+            {fenster.offen
               ? "Bestellungen sind offen"
-              : "Bestellschluss ist durch"}
+              : fenster.grund === "pausiert"
+                ? "Bestellungen sind pausiert"
+                : fenster.grund === "zu_frueh"
+                  ? `Öffnet um ${fenster.start} Uhr`
+                  : "Bestellschluss ist durch"}
           </p>
           <p className="text-sm text-leise">
-            Täglich bis {bestellschlussText()} Uhr. Änderbar in{" "}
-            <code className="font-mono text-xs">src/config.ts</code>.
+            Täglich {fenster.start} bis {fenster.ende} Uhr · zum Ändern tippen
           </p>
         </div>
-      </div>
+      </Link>
 
       {/* Bestellstatus */}
       <section>
@@ -146,6 +152,16 @@ export default async function AdminUebersicht() {
             href="/admin/kasse"
             titel="Kasse"
             text={`${euro(bezahlt)} eingenommen, ${euro(gesamt - bezahlt)} offen`}
+          />
+          <Feld
+            href="/admin/kategorien"
+            titel="Kategorien"
+            text="Anlegen, umbenennen, löschen"
+          />
+          <Feld
+            href="/admin/einstellungen"
+            titel="Bestellzeiten"
+            text={`${fenster.start} bis ${fenster.ende} Uhr`}
           />
           <Feld
             href="/admin/archiv"
