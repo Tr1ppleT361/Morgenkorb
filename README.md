@@ -166,31 +166,75 @@ kann niemand die Sperre umgehen.
 Es gibt **ein** Login für alle – unter `/anmelden`. Ob jemand Admin ist,
 entscheidet die Rolle im Konto.
 
-**Für Mitschüler (optional):** Wer will, legt unter `/registrieren` ein Konto
-mit Name, E-Mail und Passwort an. Vorteil: Name und Klasse sind beim
-Bestellen schon ausgefüllt, und unter `/konto` sieht man alle eigenen
-Bestellungen samt Status. **Bestellen geht weiterhin auch ohne Konto** – dann
-findet man seine Bestellung nur über den Link der Bestätigungsseite.
+### Registrierung mit E-Mail-Bestätigung
 
-**Für dich (Admin):** Melde dich mit `ADMIN_EMAIL` und `ADMIN_PASSWORT` an
-(siehe oben). Danach ist `/admin` freigeschaltet. Die Anmeldung hält
-**30 Tage**, du musst dich also nicht ständig neu einloggen.
+Wer ein Konto anlegt, bekommt einen **sechsstelligen Code per E-Mail**. Erst
+nach Eingabe des Codes ist das Konto freigeschaltet. Das passiert **nur bei
+der Registrierung** – beim normalen Anmelden danach nie wieder.
 
-Weitere Admins: deren E-Mail-Adressen kommagetrennt in `ADMIN_EMAILS`
-eintragen. Wer sich mit so einer Adresse registriert oder anmeldet, wird
-automatisch Admin.
+Damit möglichst wenig Unsinn durchkommt, wird die Adresse vorher geprüft:
+Form (`etwas@etwas.de`), bekannte Wegwerf-Anbieter werden abgelehnt, und
+häufige Vertipper bekommen einen Hinweis („Meintest du @gmail.com?"). Lehnt
+der Mailanbieter die Adresse ab, wird das angefangene Konto wieder gelöscht –
+sonst wäre die Adresse für immer blockiert.
+
+Der Code gilt 30 Minuten, erlaubt 5 Fehlversuche und man kann sich höchstens
+5 neue pro Stunde schicken lassen. Gespeichert wird nur der Hash des Codes.
+
+**Dafür brauchst du einen Mail-Dienst:** Konto bei [Resend](https://resend.com)
+anlegen (kostenlos für kleine Mengen), Domain verifizieren, API-Key erzeugen
+und als `RESEND_API_KEY` plus `MAIL_ABSENDER` eintragen. Ohne diese beiden
+Variablen kann sich niemand registrieren.
+
+### Für dich (Admin)
+
+Melde dich mit `ADMIN_EMAIL` und `ADMIN_PASSWORT` an. Admin-Konten brauchen
+keine E-Mail-Bestätigung, damit du dich nie aussperrst. Die Anmeldung hält
+**30 Tage**.
 
 ### Wie die Passwörter gespeichert werden
 
 Passwörter landen **nie** im Klartext in der Datenbank, sondern nur als
 scrypt-Hash mit eigenem Zufallssalz pro Konto (siehe
-`src/lib/passwort.ts`). Aus dem Hash lässt sich das Passwort nicht
-zurückrechnen.
+`src/lib/passwort.ts`). Beim Anmelden bekommt der Browser ein `httpOnly`-Cookie
+mit einem Zufallsschlüssel; in der Datenbank steht nur dessen Hash.
 
-Beim Anmelden bekommt der Browser ein Cookie mit einem langen Zufallsschlüssel.
-In der Datenbank steht nur dessen Hash – wer die Datenbank liest, kann sich
-damit also nicht anmelden. Das Cookie ist `httpOnly`, JavaScript auf der
-Seite kommt nicht heran.
+---
+
+## Kartenzahlung mit Stripe
+
+Ohne Stripe-Schlüssel gibt es einfach nur Barzahlung – die Seite funktioniert
+vollständig. Mit Stripe können deine Mitschüler zusätzlich sofort mit Karte
+(und allem, was Stripe sonst anbietet) bezahlen.
+
+### Einrichten
+
+1. Konto bei [stripe.com](https://stripe.com) anlegen.
+2. **Developers → API keys**: den *Secret key* kopieren →
+   `STRIPE_SECRET_KEY` in den Vercel-Variablen.
+3. **Developers → Webhooks → Add endpoint**:
+   `https://deine-domain/api/stripe/webhook`
+   Ereignisse: `checkout.session.completed`,
+   `checkout.session.async_payment_succeeded`,
+   `checkout.session.async_payment_failed`,
+   `checkout.session.expired`, `charge.refunded`.
+4. Das *Signing secret* des Endpoints kopieren → `STRIPE_WEBHOOK_SECRET`.
+5. Neu deployen.
+
+Das Geld landet direkt auf deinem Stripe-Konto und wird von dort ausgezahlt.
+
+### Warum das sicher ist
+
+- Der geheime Schlüssel wird **nur serverseitig** benutzt (`src/lib/stripe.ts`).
+  Im Browser landet er nie.
+- Der Betrag wird **immer frisch aus der Datenbank** gerechnet, nie aus dem,
+  was der Browser schickt.
+- Ob eine Bestellung bezahlt ist, entscheidet **ausschließlich der Webhook**.
+  Die Erfolgsseite im Browser ist kein Beweis – die kann jeder aufrufen.
+- Jeder Webhook-Aufruf wird **signaturgeprüft**. Ohne gültige Signatur
+  passiert nichts.
+- Doppelt zugestellte Webhooks buchen nicht doppelt (`updateMany` mit der
+  Bedingung „noch nicht bezahlt").
 
 ---
 
@@ -204,7 +248,9 @@ Seite kommt nicht heran.
 | **Kunden** | Alle Konten mit Bestellzahl und offenem Betrag, dazu Gast-Bestellungen |
 | **Produkte** | Anlegen, bearbeiten, Bild setzen, veröffentlichen oder verstecken |
 | **Kasse** | Wer hat bezahlt, was fehlt noch – auch aus früheren Tagen |
+| **Kategorien** | Anlegen, umbenennen, sortieren, ausblenden, löschen |
 | **Archiv** | Abgeschlossene Bestellungen |
+| **Zeiten** | Bestellzeitfenster einstellen |
 
 ### Bestellstatus
 
@@ -248,13 +294,22 @@ Kommazahlen sind bei Geld ungenau – deshalb rechnen wir überall in Cent und
 teilen erst kurz vor der Anzeige durch 100 (siehe `src/lib/geld.ts`).
 
 ```
-Product      id, name (einmalig), preis (Cent), kategorie, bildUrl?, aktiv
-Order        id, name, klasse, notiz?, erstelltAm, bezahlt, abgeschlossen,
-             userId?, status, statusAm
-OrderItem    id, orderId, productId, menge, preisBeimKauf (Cent)
-User         id, email (einmalig), name, klasse?, passwortHash, rolle
-Session      id, tokenHash, userId, laeuftAbAm
-OrderStatus  id, orderId, status, am, notiz?   (der Verlauf)
+Category         id, name (einmalig), sortierung, aktiv
+Product          id, name (einmalig), preis (Cent), einkauf?, categoryId,
+                 bildUrl?, aktiv
+ProductVariant   id, productId, name, preis (Cent), einkauf?, aktiv
+Order            id, name, klasse, notiz?, erstelltAm, bezahlt, abgeschlossen,
+                 userId?, status, statusAm,
+                 zahlart, zahlstatus, bezahltAm?, stripeSessionId?,
+                 stripePaymentIntentId?
+OrderItem        id, orderId, productId, variantId?, variantName?,
+                 menge, preisBeimKauf (Cent)
+User             id, email (einmalig), name, klasse?, passwortHash, rolle,
+                 emailVerifiziertAm?
+Session          id, tokenHash, userId, laeuftAbAm
+VerificationCode id, userId, codeHash, laeuftAbAm, versuche
+OrderStatus      id, orderId, status, am, notiz?   (der Verlauf)
+Setting          schluessel, wert                  (z. B. die Bestellzeiten)
 ```
 
 `Order.userId` ist optional: Bestellungen ohne Konto funktionieren weiterhin.
@@ -286,6 +341,47 @@ src/
     bestellung/[id]/   Bestätigungsseite
     admin/             Login, Einkaufsliste, Pro Person, Produkte, Archiv
 ```
+
+---
+
+## Bestellzeiten
+
+Unter **Admin → Zeiten** stellst du ein, von wann bis wann bestellt werden
+kann. Die Zeiten stehen **nicht im Code**, sondern in der Datenbank – du
+änderst sie jederzeit über die Website.
+
+- Ein Fenster über Mitternacht ist erlaubt (Start 18:00, Ende 02:00).
+- Der Schalter „Bestellungen angenommen" schließt sofort, egal welche Uhrzeit.
+- Geprüft wird auch auf dem Server: Wer im Browser trickst, kommt trotzdem
+  nicht durch.
+
+---
+
+## Sortiment, Preise und Sorten
+
+Das Startsortiment umfasst rund 150 Produkte in acht Kategorien, dazu eine
+kleine **Bäckerei**-Kategorie – die kannst du an Tagen ohne Ware mit einem
+Klick komplett ausblenden (Admin → Kategorien → Schalter).
+
+### Wie die Preise entstehen
+
+In `prisma/sortiment.ts` steht zu jedem Produkt der **Einkaufspreis**.
+`prisma/preise.ts` rechnet daraus den Verkaufspreis:
+
+1. Einkauf + 30 % Aufschlag
+2. gerundet auf barzahlungsfreundliche Beträge: unter 1 € auf 10 Cent,
+   ab 1 € auf 50 Cent – also 1,50 € oder 2,00 €, nie 1,89 €
+3. mindestens 10 % Marge müssen übrig bleiben
+
+Im Schnitt kommen so rund 29 % Marge heraus. Willst du mehr oder weniger,
+änderst du `AUFSCHLAG` in `prisma/preise.ts`.
+
+### Sorten
+
+Produkte wie Fanta oder Monster haben **Sorten** mit eigenen Preisen. Im Shop
+steht dann „ab 1,50 €" und ein Knopf öffnet die Auswahl. Sorten pflegst du im
+Admin unter *Produkte → Sorten*. Ein Produkt ohne Sorten funktioniert
+unverändert.
 
 ---
 

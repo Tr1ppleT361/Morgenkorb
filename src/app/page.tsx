@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { bestellfenster } from "@/lib/bestellschluss";
 import { Bestellseite } from "@/components/Bestellseite";
 import { aktuellerNutzer } from "@/lib/auth";
+import { stripeEingerichtet } from "@/lib/stripe";
 
 // Die Seite hängt von Uhrzeit und Anmeldung ab -> immer frisch rendern.
 export const dynamic = "force-dynamic";
@@ -76,6 +77,7 @@ export default async function Startseite() {
       gruppen={gruppen}
       fenster={fenster}
       nutzer={nutzer && { name: nutzer.name, klasse: nutzer.klasse ?? "" }}
+      karteMoeglich={stripeEingerichtet()}
     />
   );
 }

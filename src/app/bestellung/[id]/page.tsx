@@ -9,16 +9,25 @@ import { euro, summeCent } from "@/lib/geld";
 import { config } from "@/config";
 import { KorbZeichen } from "@/components/Logo";
 import { StatusVerlauf } from "@/components/StatusVerlauf";
+import { JetztBezahlen } from "@/components/JetztBezahlen";
+import { stripeEingerichtet } from "@/lib/stripe";
 
 export const dynamic = "force-dynamic";
 
 export default async function Bestaetigung({
   params,
+  searchParams,
 }: {
   // In Next.js 15 sind params ein Promise – deshalb das await unten.
   params: Promise<{ id: string }>;
+  searchParams: Promise<{
+    bezahlt?: string;
+    abgebrochen?: string;
+    zahlfehler?: string;
+  }>;
 }) {
   const { id } = await params;
+  const hinweise = await searchParams;
 
   const bestellung = await prisma.order.findUnique({
     where: { id },
@@ -31,6 +40,7 @@ export default async function Bestaetigung({
   if (!bestellung) notFound();
 
   const summe = summeCent(bestellung.items);
+  const karteMoeglich = stripeEingerichtet();
   const stueck = bestellung.items.reduce((s, i) => s + i.menge, 0);
 
   const datum = new Intl.DateTimeFormat("de-DE", {
@@ -53,6 +63,76 @@ export default async function Bestaetigung({
           Deine Sachen sind morgen früh dabei.
         </p>
       </div>
+
+      {/* Rückmeldung nach der Kartenzahlung */}
+      {hinweise.bezahlt === "1" && bestellung.zahlstatus !== "BEZAHLT" && (
+        <div className="karte mt-5 border-honig/40 bg-honigHell p-4 text-sm text-ziegel">
+          Danke! Die Zahlung wird gerade bestätigt. Das dauert manchmal ein paar
+          Sekunden – lade die Seite gleich nochmal.
+        </div>
+      )}
+      {hinweise.abgebrochen === "1" && (
+        <div className="karte mt-5 p-4 text-sm">
+          Die Zahlung wurde abgebrochen. Deine Bestellung steht trotzdem – du
+          kannst unten erneut zahlen oder einfach bar bei der Übergabe bezahlen.
+        </div>
+      )}
+      {hinweise.zahlfehler && (
+        <div className="karte mt-5 border-beere/40 bg-beere/8 p-4 text-sm text-beere">
+          {hinweise.zahlfehler}
+        </div>
+      )}
+
+      {/* Zahlungsstatus */}
+      <section className="mt-5">
+        <div
+          className={
+            "karte flex items-center gap-3 p-4 " +
+            (bestellung.zahlstatus === "BEZAHLT" ? "border-moos/50" : "")
+          }
+        >
+          <span
+            className={
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-weich " +
+              (bestellung.zahlstatus === "BEZAHLT"
+                ? "bg-moos/15 text-moos"
+                : "bg-honigHell text-ziegel")
+            }
+          >
+            {bestellung.zahlstatus === "BEZAHLT" ? (
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden>
+                <path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden>
+                <rect x="2.5" y="5.5" width="19" height="13" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
+                <path d="M2.5 10h19" stroke="currentColor" strokeWidth="1.8" />
+              </svg>
+            )}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">
+              {bestellung.zahlstatus === "BEZAHLT"
+                ? "Bezahlt"
+                : bestellung.zahlstatus === "ERSTATTET"
+                  ? "Erstattet"
+                  : bestellung.zahlart === "KARTE"
+                    ? "Zahlung offen"
+                    : "Bar bei der Übergabe"}
+            </p>
+            <p className="text-sm text-leise">
+              {bestellung.zahlstatus === "BEZAHLT"
+                ? `${euro(summe)} sind eingegangen – du musst nichts mitbringen.`
+                : `${euro(summe)} ${bestellung.zahlart === "KARTE" ? "noch offen" : "passend mitbringen"}`}
+            </p>
+          </div>
+        </div>
+
+        {/* Nachträglich mit Karte zahlen */}
+        {karteMoeglich && bestellung.zahlstatus !== "BEZAHLT" && (
+          <JetztBezahlen orderId={bestellung.id} betrag={euro(summe)} />
+        )}
+      </section>
 
       {/* Wo steht die Bestellung gerade? */}
       <section className="mt-7">

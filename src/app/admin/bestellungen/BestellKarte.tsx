@@ -20,6 +20,8 @@ export function BestellKarte({
   klasse,
   notiz,
   bezahlt,
+  zahlart,
+  zahlstatus,
   status,
   email,
   hatKonto,
@@ -32,6 +34,8 @@ export function BestellKarte({
   klasse: string;
   notiz: string | null;
   bezahlt: boolean;
+  zahlart: string;
+  zahlstatus: string;
   status: string;
   email: string | null;
   hatKonto: boolean;
@@ -119,6 +123,18 @@ export function BestellKarte({
               {t.titel}
             </span>
             <span>{zeit} Uhr</span>
+            {zahlart === "KARTE" && (
+              <span
+                className={
+                  "rounded-full px-2 py-0.5 text-[0.7rem] font-bold " +
+                  (zahlstatus === "BEZAHLT"
+                    ? "bg-moos/15 text-moos"
+                    : "bg-beere/12 text-beere")
+                }
+              >
+                Karte{zahlstatus === "BEZAHLT" ? " ✓" : " offen"}
+              </span>
+            )}
             <span>· {artikel.reduce((s, a) => s + a.menge, 0)} Artikel</span>
           </p>
         </button>

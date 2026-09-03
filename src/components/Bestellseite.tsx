@@ -12,6 +12,7 @@ import { schluessel, zerlegen } from "@/lib/warenkorb";
 import { euro } from "@/lib/geld";
 import { config } from "@/config";
 import { bestellungAufgeben } from "@/app/actions";
+import { zahlungStarten } from "@/app/zahlung/actions";
 import { ProduktKachel, SortenFenster, Zeichen } from "./ProduktKachel";
 import { KategorieIcon, kategorieTon } from "./KategorieIcon";
 import { KorbZeichen } from "./Logo";
@@ -34,11 +35,14 @@ export function Bestellseite({
   gruppen,
   fenster,
   nutzer,
+  karteMoeglich = false,
 }: {
   gruppen: Gruppe[];
   fenster: FensterStatus;
   /** Angemeldeter Nutzer – dann sind Name und Klasse schon ausgefüllt */
   nutzer?: { name: string; klasse: string } | null;
+  /** Ist Stripe eingerichtet? Nur dann gibt es die Kartenzahlung. */
+  karteMoeglich?: boolean;
 }) {
   const offen = fenster.offen;
   const router = useRouter();
@@ -193,6 +197,21 @@ export function Bestellseite({
       } catch {
         /* egal */
       }
+
+      // Bei Kartenzahlung geht es weiter zu Stripe
+      if (zahlart === "KARTE") {
+        const zahlung = await zahlungStarten(ergebnis.orderId);
+        if (zahlung.ok) {
+          window.location.href = zahlung.url;
+          return;
+        }
+        // Klappt nicht? Bestellung steht trotzdem – dann eben bar.
+        router.push(
+          `/bestellung/${ergebnis.orderId}?zahlfehler=${encodeURIComponent(zahlung.fehler)}`,
+        );
+        return;
+      }
+
       router.push(`/bestellung/${ergebnis.orderId}`);
     });
   }
@@ -276,6 +295,17 @@ export function Bestellseite({
         onOeffnen={() => setKorbOffen(true)}
       />
 
+      {/* Sortenauswahl für Produkte mit mehreren Geschmacksrichtungen */}
+      {sortenProdukt && (
+        <SortenFenster
+          produkt={sortenProdukt}
+          mengen={warenkorb}
+          gesperrt={!offen}
+          onAendern={aendern}
+          onSchliessen={() => setSortenProdukt(null)}
+        />
+      )}
+
       {korbOffen && (
         <KorbFenster
           positionen={positionen}
@@ -290,6 +320,9 @@ export function Bestellseite({
           setKlasse={setKlasse}
           setNotiz={setNotiz}
           angemeldet={Boolean(nutzer)}
+          karteMoeglich={karteMoeglich}
+          zahlart={zahlart}
+          setZahlart={setZahlart}
           onSchliessen={() => setKorbOffen(false)}
           onAendern={aendern}
           onAbsenden={absenden}
@@ -413,6 +446,9 @@ function KorbFenster({
   fehler,
   sendet,
   angemeldet,
+  karteMoeglich,
+  zahlart,
+  setZahlart,
   setName,
   setKlasse,
   setNotiz,
@@ -435,6 +471,9 @@ function KorbFenster({
   fehler: string | null;
   sendet: boolean;
   angemeldet: boolean;
+  karteMoeglich: boolean;
+  zahlart: "BAR" | "KARTE";
+  setZahlart: (z: "BAR" | "KARTE") => void;
   setName: (v: string) => void;
   setKlasse: (v: string) => void;
   setNotiz: (v: string) => void;
@@ -580,6 +619,27 @@ function KorbFenster({
             />
           </div>
 
+          {/* Zahlart */}
+          {karteMoeglich && (
+            <div>
+              <p className="mb-1.5 text-sm font-semibold">Bezahlen</p>
+              <div className="grid grid-cols-2 gap-2">
+                <ZahlartKnopf
+                  gewaehlt={zahlart === "BAR"}
+                  onClick={() => setZahlart("BAR")}
+                  titel="Bar"
+                  text="bei der Übergabe"
+                />
+                <ZahlartKnopf
+                  gewaehlt={zahlart === "KARTE"}
+                  onClick={() => setZahlart("KARTE")}
+                  titel="Karte"
+                  text="sofort online"
+                />
+              </div>
+            </div>
+          )}
+
           {fehler && (
             <p className="rounded-weich border border-beere/40 bg-beere/10 px-4 py-3 text-sm font-semibold text-beere">
               {fehler}
@@ -599,7 +659,11 @@ function KorbFenster({
               className="btn-primaer flex-[1.4]"
               disabled={sendet || anzahl === 0}
             >
-              {sendet ? "Moment…" : "Bestellen"}
+              {sendet
+                ? "Moment…"
+                : zahlart === "KARTE"
+                  ? "Weiter zur Zahlung"
+                  : "Bestellen"}
             </button>
           </div>
 
@@ -619,6 +683,36 @@ function KorbFenster({
         </form>
       </div>
     </div>
+  );
+}
+
+/** Ein Knopf zur Wahl der Zahlart. */
+function ZahlartKnopf({
+  gewaehlt,
+  onClick,
+  titel,
+  text,
+}: {
+  gewaehlt: boolean;
+  onClick: () => void;
+  titel: string;
+  text: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={gewaehlt}
+      className={
+        "rounded-weich border-2 px-3 py-2.5 text-left transition " +
+        (gewaehlt
+          ? "border-honig bg-honigHell"
+          : "border-linie bg-karte hover:border-honig/50")
+      }
+    >
+      <span className="block text-sm font-bold">{titel}</span>
+      <span className="block text-xs text-leise">{text}</span>
+    </button>
   );
 }
 

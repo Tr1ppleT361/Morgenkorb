@@ -73,6 +73,8 @@ export default async function BestellungenSeite() {
             klasse={b.klasse}
             notiz={b.notiz}
             bezahlt={b.bezahlt}
+            zahlart={b.zahlart}
+            zahlstatus={b.zahlstatus}
             status={b.status}
             email={b.user?.email ?? null}
             hatKonto={Boolean(b.userId)}
