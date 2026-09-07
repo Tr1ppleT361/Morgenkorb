@@ -6,9 +6,10 @@
  * Takt: Der Hobby-Plan von Vercel erlaubt nur EINEN Cron-Lauf pro Tag.
  * Deshalb steht dort "0 17 * * *" – 17:00 UTC, also 19:00 Uhr deutscher
  * Sommerzeit und damit rund eine Stunde vor dem Standard-Bestellschluss.
- * Mit dem Pro-Plan kann man dort z. B. "*/15 * * * *" eintragen; dann
- * trifft die Erinnerung die Uhrzeit genauer. (In vercel.json sind
- * Kommentare nicht erlaubt, deshalb steht die Erklärung hier.)
+ * Mit dem Pro-Plan kann man dort einen engeren Takt eintragen (z. B. alle
+ * 15 Minuten); dann trifft die Erinnerung die Uhrzeit genauer.
+ * In vercel.json sind Kommentare nicht erlaubt, deshalb steht die
+ * Erklärung hier.
  * Wer eingestellt hat, erinnert werden zu wollen, und kurz vor
  * Bestellschluss noch etwas im Korb hat, bekommt eine Mail.
  *
