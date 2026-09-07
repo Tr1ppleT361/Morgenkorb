@@ -385,6 +385,73 @@ unverändert.
 
 ---
 
+## Für deine Mitschüler
+
+**Favoriten und zuletzt angesehen** – ein Herz auf jeder Kachel, eigene
+Ansichten oben in der Leiste. Beides liegt im Browser, funktioniert also auch
+ohne Konto, gilt dafür pro Gerät.
+
+**Suche** versteht Sorten und Tippfehler: „Monster Mango" findet Monster
+Energy über die Sorte Mango Loco, „Snikers" findet Snickers, „kasegeback"
+findet Käsegebäck. Alle Suchwörter müssen passen – sonst käme bei
+„Monster Mango" jedes Monster zurück.
+
+**Filter und Sortierung** – Merkmale wie zuckerfrei oder vegan pflegst du am
+Produkt (kommagetrennt), sie erscheinen dann automatisch als Filter.
+Sortieren geht nach Preis, Name oder meistbestellt.
+
+**Rückgängig** – nach dem Hinzufügen erscheint kurz eine Leiste zum
+Zurücknehmen.
+
+**Restbudget** – setzt du ein Bestelllimit, steht im Korb „Noch 4,50 € bis zum
+Bestelllimit" mit Balken. Der Server lehnt zu große Bestellungen ebenfalls ab.
+
+**Nochmal bestellen** – übernimmt die Artikel einer früheren Bestellung in den
+Korb, auf der Bestätigungsseite und im Konto.
+
+**Ändern und stornieren** – bis zur Änderungsfrist (Admin → Einstellungen)
+dürfen Kunden ihre Bestellung selbst anpassen oder abbrechen. Bestände werden
+mitgeführt. Bei bezahlten Bestellungen wird die Differenz abgerechnet:
+günstiger heißt Teilerstattung über Stripe, teurer heißt offene Nachzahlung.
+
+**Erinnerung** – im Konto einschaltbar. Eine Stunde vor Bestellschluss kommt
+eine Mail, wenn noch etwas im Korb liegt. Dafür speichern angemeldete Nutzer
+ihren Korb zusätzlich auf dem Server; Gäste nicht.
+
+**Wünsche** unter `/wuensche` – vorschlagen kann jeder, abstimmen nur mit
+Konto. Im Admin nach Stimmen sortiert.
+
+---
+
+## Bestände, Zutaten und Allergene
+
+**Bestand** ist optional. Leer heißt unbegrenzt. Ist ein Bestand gesetzt,
+zeigt der Shop bei knapper Ware „Noch 3 Stück", sperrt ausverkaufte Produkte
+und markiert ausverkaufte Sorten schon in der Auswahl. Beim Bestellen prüft
+der Server erneut und zieht die Menge in derselben Transaktion ab.
+Storniert jemand, geht die Ware zurück ins Regal.
+
+**Zutaten und Allergene sind bewusst leer.** Ich habe keine verlässlichen
+Herstellerangaben für alle Produkte, und erfundene Allergendaten wären
+gefährlich. Trag dort nur ein, was du wirklich auf der Verpackung liest.
+Im Shop erscheinen die Angaben in einem Aufklapper mit dem Hinweis, dass
+allein die Verpackung verbindlich ist.
+
+---
+
+## Admin-Zusatzfunktionen
+
+**Schnellbearbeitung** – Preis und Bestand direkt in der Produktliste ändern,
+Enter speichert. Kein Formular öffnen nötig.
+
+**Protokoll** – unter *Protokoll* siehst du, wer wann was geändert hat:
+Preise, Bestände, Statuswechsel, Bestellungen, Einstellungen.
+
+**Einstellungen** – Bestellzeiten, Änderungsfrist für Kunden, Bestelllimit
+sowie Abholort und -zeit (erscheinen im Warenkorb und auf der Bestellung).
+
+---
+
 ## Aussehen ändern
 
 Die Farben stehen alle an **einer** Stelle: ganz oben in `src/app/globals.css`.

@@ -12,6 +12,8 @@ import { statusText, STATUS_KLASSEN, statusStufe } from "@/lib/status";
 import { STATUS_REIHE } from "@/lib/status";
 import { abmelden } from "./actions";
 import { ErneutBestellen } from "@/components/ErneutBestellen";
+import { ErinnerungSchalter } from "@/components/ErinnerungSchalter";
+import { prisma as db } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +26,11 @@ export default async function KontoSeite() {
     include: { items: { include: { product: true } } },
     orderBy: { erstelltAm: "desc" },
     take: 50,
+  });
+
+  const konto = await db.user.findUnique({
+    where: { id: nutzer.id },
+    select: { erinnerung: true },
   });
 
   const gesamt = bestellungen.reduce((s, b) => s + summeCent(b.items), 0);
@@ -65,6 +72,11 @@ export default async function KontoSeite() {
           Zur Verwaltung
         </Link>
       )}
+
+      {/* Erinnerung */}
+      <div className="mt-3">
+        <ErinnerungSchalter an={konto?.erinnerung ?? false} />
+      </div>
 
       {/* Zahlen */}
       {bestellungen.length > 0 && (

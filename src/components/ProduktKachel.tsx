@@ -137,6 +137,26 @@ export function ProduktKachel({
           </h3>
         </button>
 
+        {/* Zutaten und Allergene – nur wenn gepflegt */}
+        {(produkt.zutaten || produkt.allergene) && (
+          <details className="mt-1 text-[0.7rem]">
+            <summary className="cursor-pointer text-leise underline decoration-dotted">
+              Zutaten
+            </summary>
+            <div className="mt-1 space-y-1 rounded-weich bg-grund p-2">
+              {produkt.allergene && (
+                <p className="font-semibold text-ziegel">
+                  Allergene: {produkt.allergene}
+                </p>
+              )}
+              {produkt.zutaten && <p className="text-leise">{produkt.zutaten}</p>}
+              <p className="text-[0.62rem] text-leise">
+                Ohne Gewähr – verbindlich ist die Verpackung.
+              </p>
+            </div>
+          </details>
+        )}
+
         {/* Wie viele sind noch da? Nur zeigen, wenn es knapp wird. */}
         {restBestand !== null && restBestand > 0 && restBestand <= 10 && (
           <p className="mt-0.5 text-[0.7rem] font-semibold text-ziegel">

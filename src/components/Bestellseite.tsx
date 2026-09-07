@@ -22,6 +22,7 @@ import { euro } from "@/lib/geld";
 import { config } from "@/config";
 import { bestellungAufgeben } from "@/app/actions";
 import { zahlungStarten } from "@/app/zahlung/actions";
+import { korbSpeichern } from "@/app/konto/korb";
 import { ProduktKachel, SortenFenster, Zeichen } from "./ProduktKachel";
 import { KategorieIcon, kategorieTon } from "./KategorieIcon";
 import { KorbZeichen } from "./Logo";
@@ -108,7 +109,18 @@ export function Bestellseite({
     } catch {
       /* z. B. Privatmodus – nicht schlimm */
     }
-  }, [warenkorb]);
+
+    // Angemeldete Nutzer: Korb auch auf dem Server merken, damit die
+    // Erinnerung vor Bestellschluss weiß, dass noch etwas drin liegt.
+    // Kurz warten, damit nicht bei jedem Klick eine Anfrage rausgeht.
+    if (!nutzer) return;
+    const uhr = setTimeout(() => {
+      korbSpeichern(warenkorb).catch(() => {
+        /* nicht schlimm – der Korb liegt ja auch im Browser */
+      });
+    }, 1200);
+    return () => clearTimeout(uhr);
+  }, [warenkorb, nutzer]);
 
   // Solange der Warenkorb offen ist, soll die Seite dahinter nicht scrollen
   useEffect(() => {
