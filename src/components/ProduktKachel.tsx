@@ -15,15 +15,21 @@ export function ProduktKachel({
   produkt,
   mengen,
   gesperrt,
+  favorit,
   onAendern,
   onSortenWaehlen,
+  onFavorit,
+  onAnsehen,
 }: {
   produkt: Produkt;
   /** Menge je Warenkorb-Schlüssel */
   mengen: Record<string, number>;
   gesperrt: boolean;
+  favorit: boolean;
   onAendern: (key: string, delta: number) => void;
   onSortenWaehlen: (produkt: Produkt) => void;
+  onFavorit: (produktId: number) => void;
+  onAnsehen: (produktId: number) => void;
 }) {
   const hatSorten = produkt.varianten.length > 0;
 
@@ -37,6 +43,15 @@ export function ProduktKachel({
 
   const imKorb = gesamtMenge > 0;
   const einzelSchluessel = schluessel(produkt.id);
+
+  // Wie viel ist noch da? null heißt "unbegrenzt".
+  const restBestand = hatSorten
+    ? summeBestand(produkt.varianten)
+    : produkt.bestand;
+  const ausverkauft = restBestand !== null && restBestand <= 0;
+  // Alles Verfügbare schon im Korb?
+  const grenzeErreicht =
+    !hatSorten && produkt.bestand !== null && gesamtMenge >= produkt.bestand;
 
   return (
     <li
@@ -79,13 +94,55 @@ export function ProduktKachel({
             {produkt.varianten.length} Sorten
           </span>
         )}
+
+        {/* Herz zum Merken */}
+        <button
+          type="button"
+          aria-pressed={favorit}
+          aria-label={
+            favorit
+              ? `${produkt.name} aus Favoriten entfernen`
+              : `${produkt.name} zu Favoriten`
+          }
+          onClick={(e) => {
+            e.stopPropagation();
+            onFavorit(produkt.id);
+          }}
+          className={
+            "absolute bottom-1.5 left-1.5 flex h-8 w-8 items-center justify-center rounded-full backdrop-blur transition " +
+            (favorit
+              ? "bg-karte/90 text-beere"
+              : "bg-karte/70 text-leise hover:text-beere")
+          }
+        >
+          <HerzZeichen gefuellt={favorit} className="h-4 w-4" />
+        </button>
+
+        {ausverkauft && (
+          <span className="absolute inset-0 flex items-center justify-center bg-grund/75 text-sm font-bold uppercase tracking-wide text-leise backdrop-blur-[1px]">
+            Ausverkauft
+          </span>
+        )}
       </div>
 
       {/* Text und Bedienung */}
       <div className="flex flex-1 flex-col px-3 pb-2.5 pt-2">
-        <h3 className="line-clamp-2 text-[0.9rem] font-semibold leading-snug">
-          {produkt.name}
-        </h3>
+        <button
+          type="button"
+          onClick={() => onAnsehen(produkt.id)}
+          className="text-left"
+        >
+          <h3 className="line-clamp-2 text-[0.9rem] font-semibold leading-snug">
+            {produkt.name}
+          </h3>
+        </button>
+
+        {/* Wie viele sind noch da? Nur zeigen, wenn es knapp wird. */}
+        {restBestand !== null && restBestand > 0 && restBestand <= 10 && (
+          <p className="mt-0.5 text-[0.7rem] font-semibold text-ziegel">
+            Noch {restBestand} {restBestand === 1 ? "Stück" : "Stück"}
+          </p>
+        )}
 
         <div className="mt-auto flex h-10 items-center justify-between gap-1.5 pt-2">
           <p className="font-titel text-[1.05rem] font-bold leading-none ziffern">
@@ -100,7 +157,7 @@ export function ProduktKachel({
           {hatSorten ? (
             <button
               type="button"
-              disabled={gesperrt}
+              disabled={gesperrt || ausverkauft}
               onClick={() => onSortenWaehlen(produkt)}
               className="flex h-9 shrink-0 items-center gap-1 rounded-full border border-honig/35 bg-honigHell px-3 text-xs font-bold text-ziegel transition hover:bg-honig hover:text-white disabled:opacity-40"
             >
@@ -130,7 +187,7 @@ export function ProduktKachel({
               <RundKnopf
                 zeichen="plus"
                 label={`Ein ${produkt.name} mehr`}
-                disabled={gesperrt}
+                disabled={gesperrt || grenzeErreicht}
                 onClick={() => onAendern(einzelSchluessel, 1)}
                 betont
               />
@@ -138,10 +195,10 @@ export function ProduktKachel({
           ) : (
             <button
               type="button"
-              disabled={gesperrt}
+              disabled={gesperrt || ausverkauft}
               onClick={() => onAendern(einzelSchluessel, 1)}
               aria-label={`Ein ${produkt.name} mehr`}
-              title="In den Korb"
+              title={ausverkauft ? "Ausverkauft" : "In den Korb"}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-honig/35 bg-honigHell text-ziegel transition hover:border-honig hover:bg-honig hover:text-white active:translate-y-px disabled:opacity-40"
             >
               <Zeichen art="plus" className="h-4 w-4" />
@@ -255,11 +312,30 @@ export function SortenFenster({
           {produkt.varianten.map((v) => {
             const key = schluessel(produkt.id, v.id);
             const menge = mengen[key] ?? 0;
+            const leer = v.bestand !== null && v.bestand <= 0;
+            const grenze = v.bestand !== null && menge >= v.bestand;
             return (
-              <li key={v.id} className="flex items-center gap-3 p-3">
+              <li
+                key={v.id}
+                className={"flex items-center gap-3 p-3 " + (leer ? "opacity-55" : "")}
+              >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold">{v.name}</p>
-                  <p className="text-sm text-leise ziffern">{euro(v.preis)}</p>
+                  <p className="truncate font-semibold">
+                    {v.name}
+                    {leer && (
+                      <span className="ml-2 rounded-full bg-leise/15 px-2 py-0.5 text-[0.65rem] font-bold uppercase text-leise">
+                        Ausverkauft
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-sm text-leise ziffern">
+                    {euro(v.preis)}
+                    {v.bestand !== null && v.bestand > 0 && v.bestand <= 10 && (
+                      <span className="ml-1.5 font-semibold text-ziegel">
+                        · noch {v.bestand}
+                      </span>
+                    )}
+                  </p>
                 </div>
 
                 {menge > 0 ? (
@@ -276,7 +352,7 @@ export function SortenFenster({
                     <RundKnopf
                       zeichen="plus"
                       label={`Ein ${produkt.name} ${v.name} mehr`}
-                      disabled={gesperrt}
+                      disabled={gesperrt || grenze}
                       onClick={() => onAendern(key, 1)}
                       betont
                     />
@@ -284,7 +360,7 @@ export function SortenFenster({
                 ) : (
                   <button
                     type="button"
-                    disabled={gesperrt}
+                    disabled={gesperrt || leer}
                     onClick={() => onAendern(key, 1)}
                     aria-label={`Ein ${produkt.name} ${v.name} mehr`}
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-honig/35 bg-honigHell text-ziegel transition hover:bg-honig hover:text-white disabled:opacity-40"
@@ -302,5 +378,31 @@ export function SortenFenster({
         </button>
       </div>
     </div>
+  );
+}
+
+/** Restbestand über alle Sorten. null, wenn mindestens eine unbegrenzt ist. */
+function summeBestand(varianten: { bestand: number | null }[]): number | null {
+  if (varianten.some((v) => v.bestand === null)) return null;
+  return varianten.reduce((s, v) => s + (v.bestand ?? 0), 0);
+}
+
+export function HerzZeichen({
+  gefuellt,
+  className,
+}: {
+  gefuellt: boolean;
+  className?: string;
+}) {
+  return (
+    <svg viewBox="0 0 20 20" className={className} aria-hidden>
+      <path
+        d="M10 17s-6.5-4.2-6.5-8.3A3.7 3.7 0 0 1 10 6.2a3.7 3.7 0 0 1 6.5 2.5C16.5 12.8 10 17 10 17Z"
+        fill={gefuellt ? "currentColor" : "none"}
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

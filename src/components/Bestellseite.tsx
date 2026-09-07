@@ -9,6 +9,15 @@ import { useRouter } from "next/navigation";
 import type { Gruppe, Produkt } from "@/app/page";
 import type { FensterStatus } from "@/lib/bestellschluss";
 import { schluessel, zerlegen } from "@/lib/warenkorb";
+import { bewerten } from "@/lib/suche";
+import {
+  angesehenLesen,
+  angesehenMerken,
+  favoritUmschalten,
+  favoritenLesen,
+} from "@/lib/merken";
+import { Rueckgaengig } from "./Rueckgaengig";
+import { HerzZeichen } from "./ProduktKachel";
 import { euro } from "@/lib/geld";
 import { config } from "@/config";
 import { bestellungAufgeben } from "@/app/actions";
@@ -36,6 +45,9 @@ export function Bestellseite({
   fenster,
   nutzer,
   karteMoeglich = false,
+  limitCent = 0,
+  abholOrt = "",
+  abholZeit = "",
 }: {
   gruppen: Gruppe[];
   fenster: FensterStatus;
@@ -43,6 +55,10 @@ export function Bestellseite({
   nutzer?: { name: string; klasse: string } | null;
   /** Ist Stripe eingerichtet? Nur dann gibt es die Kartenzahlung. */
   karteMoeglich?: boolean;
+  /** Höchstbetrag pro Bestellung in Cent. 0 = kein Limit. */
+  limitCent?: number;
+  abholOrt?: string;
+  abholZeit?: string;
 }) {
   const offen = fenster.offen;
   const router = useRouter();
@@ -53,7 +69,18 @@ export function Bestellseite({
   const [sendet, starteSenden] = useTransition();
 
   const [sortenProdukt, setSortenProdukt] = useState<Produkt | null>(null);
+  const [favoriten, setFavoriten] = useState<number[]>([]);
+  const [angesehen, setAngesehen] = useState<number[]>([]);
+  const [ansicht, setAnsicht] = useState<"alle" | "favoriten" | "angesehen">("alle");
+  const [merkmalFilter, setMerkmalFilter] = useState<string | null>(null);
+  const [sortierung, setSortierung] = useState<"standard" | "preis" | "name" | "beliebt">("standard");
+  const [letzteAktion, setLetzteAktion] = useState<
+    { key: string; delta: number; text: string } | null
+  >(null);
   const [zahlart, setZahlart] = useState<"BAR" | "KARTE">("BAR");
+  const [ersatzRegel, setErsatzRegel] = useState<
+    "WEGLASSEN" | "ERSATZ" | "RUECKSPRACHE"
+  >("WEGLASSEN");
   const [name, setName] = useState(nutzer?.name ?? "");
   const [klasse, setKlasse] = useState(nutzer?.klasse ?? "");
   const [notiz, setNotiz] = useState("");
@@ -63,6 +90,8 @@ export function Bestellseite({
     try {
       const roh = localStorage.getItem(SPEICHER_KEY);
       if (roh) setWarenkorb(JSON.parse(roh));
+      setFavoriten(favoritenLesen());
+      setAngesehen(angesehenLesen());
       // Nur nachfüllen, wenn wir die Daten nicht schon vom Konto haben
       if (!nutzer) {
         setName(localStorage.getItem("morgenkorb_name") ?? "");
@@ -95,20 +124,108 @@ export function Bestellseite({
     [alleProdukte],
   );
 
+  // Welche Merkmale kommen im Sortiment überhaupt vor?
+  const alleMerkmale = useMemo(() => {
+    const menge = new Set<string>();
+    for (const p of alleProdukte) {
+      p.merkmale.forEach((m) => menge.add(m));
+      p.varianten.forEach((v) => v.merkmale.forEach((m) => menge.add(m)));
+    }
+    return [...menge].sort();
+  }, [alleProdukte]);
+
+  /**
+   * Produkte filtern und sortieren.
+   * Reihenfolge: Ansicht (alle/Favoriten/zuletzt) -> Merkmal -> Suche -> Sortierung
+   */
   const gefiltert = useMemo(() => {
-    const q = suche.trim().toLowerCase();
-    if (!q) return gruppen;
-    return gruppen
-      .map((g) => ({
-        kategorie: g.kategorie,
-        produkte: g.produkte.filter(
-          (p) =>
-            p.name.toLowerCase().includes(q) ||
-            g.kategorie.toLowerCase().includes(q),
-        ),
-      }))
-      .filter((g) => g.produkte.length > 0);
-  }, [gruppen, suche]);
+    const q = suche.trim();
+
+    // 1) Grundmenge je nach Ansicht
+    let basis = alleProdukte;
+    if (ansicht === "favoriten") {
+      basis = alleProdukte.filter((p) => favoriten.includes(p.id));
+    } else if (ansicht === "angesehen") {
+      // in der Reihenfolge des Ansehens
+      basis = angesehen
+        .map((id) => produktMap.get(id))
+        .filter((p): p is Produkt => Boolean(p));
+    }
+
+    // 2) Merkmal-Filter (zuckerfrei, vegan, ...)
+    if (merkmalFilter) {
+      basis = basis.filter(
+        (p) =>
+          p.merkmale.includes(merkmalFilter) ||
+          p.varianten.some((v) => v.merkmale.includes(merkmalFilter)),
+      );
+    }
+
+    // 3) Suche mit Tippfehlertoleranz
+    let treffer: { produkt: Produkt; punkte: number }[];
+    if (q) {
+      treffer = basis
+        .map((p) => ({ produkt: p, punkte: bewerten(p, q) }))
+        .filter((t) => t.punkte > 0);
+    } else {
+      treffer = basis.map((p) => ({ produkt: p, punkte: 0 }));
+    }
+
+    // 4) Sortieren
+    if (sortierung === "preis") {
+      treffer.sort((a, b) => a.produkt.preis - b.produkt.preis);
+    } else if (sortierung === "name") {
+      treffer.sort((a, b) => a.produkt.name.localeCompare(b.produkt.name, "de"));
+    } else if (sortierung === "beliebt") {
+      treffer.sort((a, b) => b.produkt.bestellt - a.produkt.bestellt);
+    } else if (q) {
+      // Standard bei Suche: bester Treffer zuerst
+      treffer.sort((a, b) => b.punkte - a.punkte);
+    }
+
+    return treffer.map((t) => t.produkt);
+  }, [
+    alleProdukte,
+    produktMap,
+    suche,
+    ansicht,
+    favoriten,
+    angesehen,
+    merkmalFilter,
+    sortierung,
+  ]);
+
+  /**
+   * Für die Anzeige: nach Kategorie gruppieren – außer wenn gesucht,
+   * gefiltert oder sortiert wird. Dann ist eine flache Liste sinnvoller.
+   */
+  const flach =
+    Boolean(suche.trim()) ||
+    ansicht !== "alle" ||
+    merkmalFilter !== null ||
+    sortierung !== "standard";
+
+  const anzeigeGruppen = useMemo(() => {
+    if (!flach) {
+      // Ursprüngliche Kategoriegruppen, aber nur mit den gefilterten Produkten
+      const erlaubt = new Set(gefiltert.map((p) => p.id));
+      return gruppen
+        .map((g) => ({
+          kategorie: g.kategorie,
+          produkte: g.produkte.filter((p) => erlaubt.has(p.id)),
+        }))
+        .filter((g) => g.produkte.length > 0);
+    }
+    const titel =
+      ansicht === "favoriten"
+        ? "Deine Favoriten"
+        : ansicht === "angesehen"
+          ? "Zuletzt angesehen"
+          : suche.trim()
+            ? `Treffer für „${suche.trim()}"`
+            : "Alle Produkte";
+    return gefiltert.length ? [{ kategorie: titel, produkte: gefiltert }] : [];
+  }, [flach, gefiltert, gruppen, ansicht, suche]);
 
   // Aus den Schlüsseln im Warenkorb die echten Produkte und Sorten holen
   const positionen = useMemo(() => {
@@ -154,8 +271,12 @@ export function Bestellseite({
   const anzahl = positionen.reduce((s, p) => s + p.menge, 0);
   const summe = positionen.reduce((s, p) => s + p.menge * p.preis, 0);
 
-  function aendern(key: string, delta: number) {
+  function aendern(key: string, delta: number, name?: string) {
     setFehler(null);
+    // Nur beim Hinzufügen eine Rückgängig-Leiste zeigen
+    if (delta > 0 && name) {
+      setLetzteAktion({ key, delta, text: `${name} hinzugefügt` });
+    }
     setWarenkorb((alt) => {
       const neu = { ...alt };
       const menge = Math.min(
@@ -168,6 +289,27 @@ export function Bestellseite({
     });
   }
 
+  /** Macht das letzte Hinzufügen rückgängig. */
+  function rueckgaengig() {
+    if (!letzteAktion) return;
+    setWarenkorb((alt) => {
+      const neu = { ...alt };
+      const menge = Math.max(0, (neu[letzteAktion.key] ?? 0) - letzteAktion.delta);
+      if (menge === 0) delete neu[letzteAktion.key];
+      else neu[letzteAktion.key] = menge;
+      return neu;
+    });
+    setLetzteAktion(null);
+  }
+
+  function herzUmschalten(produktId: number) {
+    setFavoriten(favoritUmschalten(produktId));
+  }
+
+  function angesehenSetzen(produktId: number) {
+    setAngesehen(angesehenMerken(produktId));
+  }
+
   function absenden(e: React.FormEvent) {
     e.preventDefault();
     setFehler(null);
@@ -178,6 +320,7 @@ export function Bestellseite({
         klasse,
         notiz,
         zahlart,
+        ersatzRegel,
         positionen: positionen.map((p) => ({
           productId: p.produkt.id,
           variantId: p.variante?.id ?? null,
@@ -234,8 +377,61 @@ export function Bestellseite({
           />
         </div>
 
-        {!suche && (
-          <nav className="-mx-4 mt-2.5 flex gap-2 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* Ansicht, Merkmale und Sortierung */}
+        <div className="-mx-4 mt-2.5 flex gap-2 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <Chip aktiv={ansicht === "alle"} onClick={() => setAnsicht("alle")}>
+            Alle
+          </Chip>
+          <Chip
+            aktiv={ansicht === "favoriten"}
+            onClick={() => setAnsicht("favoriten")}
+          >
+            <HerzZeichen gefuellt={ansicht === "favoriten"} className="h-3.5 w-3.5" />
+            Favoriten
+            {favoriten.length > 0 && (
+              <span className="ziffern">({favoriten.length})</span>
+            )}
+          </Chip>
+          {angesehen.length > 0 && (
+            <Chip
+              aktiv={ansicht === "angesehen"}
+              onClick={() => setAnsicht("angesehen")}
+            >
+              Zuletzt angesehen
+            </Chip>
+          )}
+
+          {alleMerkmale.map((m) => (
+            <Chip
+              key={m}
+              aktiv={merkmalFilter === m}
+              onClick={() => setMerkmalFilter(merkmalFilter === m ? null : m)}
+            >
+              {m}
+            </Chip>
+          ))}
+
+          {/* Sortierung */}
+          <label className="flex shrink-0 items-center gap-1.5 rounded-full border border-linie bg-karte py-2 pl-3 pr-2 text-sm font-semibold">
+            <span className="text-leise">Sortieren</span>
+            <select
+              value={sortierung}
+              onChange={(e) =>
+                setSortierung(e.target.value as typeof sortierung)
+              }
+              className="bg-transparent text-sm font-semibold outline-none"
+              aria-label="Produkte sortieren"
+            >
+              <option value="standard">Standard</option>
+              <option value="preis">Preis</option>
+              <option value="name">Name</option>
+              <option value="beliebt">Meistbestellt</option>
+            </select>
+          </label>
+        </div>
+
+        {!suche && ansicht === "alle" && !merkmalFilter && sortierung === "standard" && (
+          <nav className="-mx-4 mt-2 flex gap-2 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {gruppen.map((g) => (
               <a
                 key={g.kategorie}
@@ -255,13 +451,17 @@ export function Bestellseite({
         )}
       </div>
 
-      {gefiltert.length === 0 && (
+      {anzeigeGruppen.length === 0 && (
         <p className="py-16 text-center text-leise">
-          Nichts gefunden für „{suche}“.
+          {ansicht === "favoriten"
+            ? "Du hast noch nichts mit dem Herz markiert."
+            : ansicht === "angesehen"
+              ? "Du hast dir noch nichts angeschaut."
+              : `Nichts gefunden für „${suche}".`}
         </p>
       )}
 
-      {gefiltert.map((gruppe) => (
+      {anzeigeGruppen.map((gruppe) => (
         <section
           key={gruppe.kategorie}
           id={alsAnker(gruppe.kategorie)}
@@ -280,8 +480,14 @@ export function Bestellseite({
                 produkt={p}
                 mengen={warenkorb}
                 gesperrt={!offen}
-                onAendern={aendern}
-                onSortenWaehlen={setSortenProdukt}
+                favorit={favoriten.includes(p.id)}
+                onAendern={(key, delta) => aendern(key, delta, p.name)}
+                onSortenWaehlen={(prod) => {
+                  angesehenSetzen(prod.id);
+                  setSortenProdukt(prod);
+                }}
+                onFavorit={herzUmschalten}
+                onAnsehen={angesehenSetzen}
               />
             ))}
           </ul>
@@ -294,6 +500,15 @@ export function Bestellseite({
         offen={offen}
         onOeffnen={() => setKorbOffen(true)}
       />
+
+      {/* Kurz nach dem Hinzufügen: Rückgängig anbieten */}
+      {letzteAktion && !korbOffen && (
+        <Rueckgaengig
+          text={letzteAktion.text}
+          onRueckgaengig={rueckgaengig}
+          onSchliessen={() => setLetzteAktion(null)}
+        />
+      )}
 
       {/* Sortenauswahl für Produkte mit mehreren Geschmacksrichtungen */}
       {sortenProdukt && (
@@ -323,6 +538,11 @@ export function Bestellseite({
           karteMoeglich={karteMoeglich}
           zahlart={zahlart}
           setZahlart={setZahlart}
+          ersatzRegel={ersatzRegel}
+          setErsatzRegel={setErsatzRegel}
+          limitCent={limitCent}
+          abholOrt={abholOrt}
+          abholZeit={abholZeit}
           onSchliessen={() => setKorbOffen(false)}
           onAendern={aendern}
           onAbsenden={absenden}
@@ -449,6 +669,11 @@ function KorbFenster({
   karteMoeglich,
   zahlart,
   setZahlart,
+  ersatzRegel,
+  setErsatzRegel,
+  limitCent,
+  abholOrt,
+  abholZeit,
   setName,
   setKlasse,
   setNotiz,
@@ -474,6 +699,11 @@ function KorbFenster({
   karteMoeglich: boolean;
   zahlart: "BAR" | "KARTE";
   setZahlart: (z: "BAR" | "KARTE") => void;
+  ersatzRegel: "WEGLASSEN" | "ERSATZ" | "RUECKSPRACHE";
+  setErsatzRegel: (r: "WEGLASSEN" | "ERSATZ" | "RUECKSPRACHE") => void;
+  limitCent: number;
+  abholOrt: string;
+  abholZeit: string;
   setName: (v: string) => void;
   setKlasse: (v: string) => void;
   setNotiz: (v: string) => void;
@@ -565,10 +795,56 @@ function KorbFenster({
         </ul>
 
         {/* Summe */}
-        <div className="mt-3 flex items-center justify-between rounded-korb bg-honigHell px-4 py-3.5">
-          <span className="font-semibold">Zusammen</span>
-          <span className="font-titel text-2xl font-bold ziffern">{euro(summe)}</span>
+        <div className="mt-3 rounded-korb bg-honigHell px-4 py-3.5">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold">Zusammen</span>
+            <span className="font-titel text-2xl font-bold ziffern">
+              {euro(summe)}
+            </span>
+          </div>
+
+          {/* Restbudget bis zum Bestelllimit */}
+          {limitCent > 0 && (
+            <div className="mt-2.5 border-t border-ziegel/15 pt-2.5">
+              <div className="mb-1.5 h-1.5 overflow-hidden rounded-full bg-ziegel/15">
+                <div
+                  className={
+                    "h-full rounded-full transition-all " +
+                    (summe > limitCent ? "bg-beere" : "bg-ziegel")
+                  }
+                  style={{
+                    width: `${Math.min(100, (summe / limitCent) * 100)}%`,
+                  }}
+                />
+              </div>
+              <p
+                className={
+                  "text-xs font-semibold " +
+                  (summe > limitCent ? "text-beere" : "text-ziegel")
+                }
+              >
+                {summe > limitCent
+                  ? `${euro(summe - limitCent)} über dem Bestelllimit von ${euro(limitCent)}`
+                  : `Noch ${euro(limitCent - summe)} bis zum Bestelllimit`}
+              </p>
+            </div>
+          )}
         </div>
+
+        {/* Wo und wann gibt es die Sachen? */}
+        {(abholOrt || abholZeit) && (
+          <div className="karte mt-3 flex items-start gap-3 p-3.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-weich bg-honigHell text-ziegel">
+              <OrtZeichen className="h-4.5 w-4.5" />
+            </span>
+            <div className="min-w-0 text-sm">
+              <p className="font-semibold">Abholung</p>
+              <p className="text-leise">
+                {[abholOrt, abholZeit].filter(Boolean).join(" · ")}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Formular */}
         <form onSubmit={onAbsenden} className="mt-5 space-y-3">
@@ -617,6 +893,33 @@ function KorbFenster({
               onChange={(e) => setNotiz(e.target.value)}
               placeholder="z. B. lieber ohne Nüsse"
             />
+          </div>
+
+          {/* Was tun, wenn etwas nicht da ist? */}
+          <div>
+            <p className="mb-1.5 text-sm font-semibold">
+              Wenn etwas nicht verfügbar ist
+            </p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <ZahlartKnopf
+                gewaehlt={ersatzRegel === "WEGLASSEN"}
+                onClick={() => setErsatzRegel("WEGLASSEN")}
+                titel="Weglassen"
+                text="einfach nicht mitbringen"
+              />
+              <ZahlartKnopf
+                gewaehlt={ersatzRegel === "ERSATZ"}
+                onClick={() => setErsatzRegel("ERSATZ")}
+                titel="Ersatz"
+                text="etwas Ähnliches"
+              />
+              <ZahlartKnopf
+                gewaehlt={ersatzRegel === "RUECKSPRACHE"}
+                onClick={() => setErsatzRegel("RUECKSPRACHE")}
+                titel="Nachfragen"
+                text="kurz Bescheid sagen"
+              />
+            </div>
           </div>
 
           {/* Zahlart */}
@@ -683,6 +986,47 @@ function KorbFenster({
         </form>
       </div>
     </div>
+  );
+}
+
+/** Kleiner runder Filter-Knopf. */
+function Chip({
+  aktiv,
+  onClick,
+  children,
+}: {
+  aktiv: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={aktiv}
+      className={
+        "flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold capitalize transition " +
+        (aktiv
+          ? "bg-honig text-white"
+          : "border border-linie bg-karte text-leise hover:bg-honigHell")
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+function OrtZeichen({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" className={className} fill="none" aria-hidden>
+      <path
+        d="M10 18s6-4.6 6-9a6 6 0 1 0-12 0c0 4.4 6 9 6 9Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+      <circle cx="10" cy="8.8" r="2.2" stroke="currentColor" strokeWidth="1.7" />
+    </svg>
   );
 }
 

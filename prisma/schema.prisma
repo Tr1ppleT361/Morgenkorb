@@ -46,8 +46,21 @@ model Product {
   bildUrl String?
   aktiv   Boolean @default(true)
 
+  /// Wie viele Stück gibt es noch? null = unbegrenzt.
+  bestand Int?
+
+  /// Merkmale zum Filtern, kommagetrennt: "zuckerfrei,vegan,koffeinfrei"
+  merkmale String?
+
+  /// Zutaten und Allergene – kommen vom Admin, nicht aus dem Seed.
+  /// Verbindlich ist immer die Verpackung.
+  zutaten   String?
+  allergene String?
+
   varianten ProductVariant[]
   items     OrderItem[]
+  favoriten Favorit[]
+  ersatzFuer OrderItem[] @relation("Ersatzprodukt")
 
   @@index([categoryId])
 }
@@ -63,6 +76,10 @@ model ProductVariant {
   einkauf    Int?
   aktiv      Boolean @default(true)
   sortierung Int     @default(100)
+
+  /// Restbestand dieser Sorte. null = unbegrenzt.
+  bestand  Int?
+  merkmale String?
 
   product Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
   items   OrderItem[]
@@ -102,6 +119,15 @@ model Order {
   /// zugestellter Webhook nicht doppelt verbucht.
   stripeSessionId       String? @unique
   stripePaymentIntentId String?
+  /// Schon erstatteter Betrag in Cent (bei Änderung nach unten)
+  erstattetCent Int @default(0)
+
+  /// Was tun, wenn etwas nicht verfügbar ist?
+  /// WEGLASSEN | ERSATZ | RUECKSPRACHE
+  ersatzRegel String @default("WEGLASSEN")
+
+  /// Wann wurde zuletzt geändert und von wem
+  geaendertAm DateTime?
 
   items    OrderItem[]
   verlauf  OrderStatus[]
@@ -146,9 +172,92 @@ model User {
   /// angelegt, aber noch nicht freigeschaltet.
   emailVerifiziertAm DateTime?
 
+  /// Möchte eine Erinnerung, wenn vor Bestellschluss noch etwas im Korb liegt
+  erinnerung Boolean @default(false)
+
   sitzungen Session[]
   orders    Order[]
   codes     VerificationCode[]
+  favoriten Favorit[]
+  korb      Cart?
+  wuensche  Wunsch[]
+  stimmen   WunschStimme[]
+}
+
+/// Ein mit Herz markiertes Produkt.
+model Favorit {
+  userId    String
+  productId Int
+  am        DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([userId, productId])
+  @@index([userId])
+}
+
+/// Der gespeicherte Warenkorb eines angemeldeten Nutzers.
+/// Nur dafür da, damit die Erinnerung vor Bestellschluss weiß, wer noch
+/// etwas im Korb hat – und damit der Korb das Gerät wechseln kann.
+model Cart {
+  userId       String   @id
+  /// Der Warenkorb als JSON-Text: { "p12v3": 2, ... }
+  inhalt       String
+  aktualisiert DateTime @updatedAt
+  /// Wann wurde zuletzt erinnert? Verhindert doppelte Mails.
+  erinnertAm   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([aktualisiert])
+}
+
+/// Ein Produktwunsch, den andere unterstützen können.
+model Wunsch {
+  id         String   @id @default(cuid())
+  text       String
+  /// Name des Vorschlagenden (auch für Gäste sichtbar)
+  name       String
+  userId     String?
+  erstelltAm DateTime @default(now())
+  /// Vom Admin erledigt (ins Sortiment aufgenommen oder abgelehnt)
+  erledigt   Boolean  @default(false)
+  antwort    String?
+
+  user    User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  stimmen WunschStimme[]
+
+  @@index([erledigt])
+}
+
+/// Eine Stimme für einen Wunsch. Pro Konto nur eine.
+model WunschStimme {
+  wunschId String
+  userId   String
+  am       DateTime @default(now())
+
+  wunsch Wunsch @relation(fields: [wunschId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([wunschId, userId])
+  @@index([wunschId])
+}
+
+/// Änderungsprotokoll: wer hat wann was geändert.
+model Protokoll {
+  id     String   @id @default(cuid())
+  am     DateTime @default(now())
+  /// Wer war es? E-Mail oder "Kunde" / "Stripe"
+  wer    String
+  /// z. B. "Preis geändert", "Bestellung storniert"
+  aktion String
+  /// Worum ging es? z. B. "Produkt 12 (Fanta)"
+  objekt String
+  /// Vorher -> nachher, als lesbarer Text
+  details String?
+
+  @@index([am])
 }
 
 /// Ein Bestätigungscode für die E-Mail-Verifizierung.
@@ -203,6 +312,8 @@ model OrderItem {
   /// Name der Sorte zum Bestellzeitpunkt – bleibt auch, wenn die
   /// Variante später gelöscht wird.
   variantName String?
+  /// Womit darf ersetzt werden, wenn es das Produkt nicht gibt?
+  ersatzProductId Int?
   menge     Int
   /// Preis in Cent zum Zeitpunkt der Bestellung – so bleibt die alte
   /// Bestellung korrekt, auch wenn sich der Produktpreis später ändert.
@@ -211,6 +322,7 @@ model OrderItem {
   order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product         @relation(fields: [productId], references: [id])
   variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  ersatz  Product?        @relation("Ersatzprodukt", fields: [ersatzProductId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
   @@index([productId])

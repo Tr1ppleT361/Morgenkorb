@@ -6,6 +6,8 @@
  */
 import { prisma } from "@/lib/prisma";
 import { bestellfenster } from "@/lib/bestellschluss";
+import { shopEinstellungen } from "@/lib/einstellungen";
+import { protokollieren } from "@/lib/protokoll";
 import { config } from "@/config";
 import { aktuellerNutzer } from "@/lib/auth";
 
@@ -26,6 +28,8 @@ export async function bestellungAufgeben(daten: {
   positionen: Bestellposition[];
   /** "BAR" oder "KARTE" – bei Karte geht es danach zu Stripe weiter */
   zahlart?: string;
+  /** WEGLASSEN | ERSATZ | RUECKSPRACHE */
+  ersatzRegel?: string;
 }): Promise<BestellErgebnis> {
   // 1) Bestellfenster prüfen – NICHT nur im Browser, sonst wäre es umgehbar.
   const fenster = await bestellfenster();
@@ -44,6 +48,11 @@ export async function bestellungAufgeben(daten: {
   const klasse = daten.klasse.trim();
   const notiz = daten.notiz?.trim() || null;
   const zahlart = daten.zahlart === "KARTE" ? "KARTE" : "BAR";
+  const ersatzRegel = ["WEGLASSEN", "ERSATZ", "RUECKSPRACHE"].includes(
+    daten.ersatzRegel ?? "",
+  )
+    ? daten.ersatzRegel!
+    : "WEGLASSEN";
 
   if (name.length < 2) return { ok: false, fehler: "Bitte gib deinen Namen an." };
   if (name.length > 60) return { ok: false, fehler: "Der Name ist zu lang." };
@@ -98,6 +107,17 @@ export async function bestellungAufgeben(daten: {
           fehler: `Bitte wähle bei „${produkt.name}" eine Sorte aus.`,
         };
       }
+      // Ist noch genug da?
+      if (variante.bestand !== null && p.menge > variante.bestand) {
+        return {
+          ok: false,
+          fehler:
+            variante.bestand <= 0
+              ? `„${produkt.name} – ${variante.name}" ist leider ausverkauft.`
+              : `Von „${produkt.name} – ${variante.name}" ${variante.bestand === 1 ? "ist nur noch 1 Stück" : `sind nur noch ${variante.bestand} Stück`} da.`,
+        };
+      }
+
       items.push({
         productId: produkt.id,
         variantId: variante.id,
@@ -106,6 +126,16 @@ export async function bestellungAufgeben(daten: {
         preisBeimKauf: variante.preis,
       });
     } else {
+      if (produkt.bestand !== null && p.menge > produkt.bestand) {
+        return {
+          ok: false,
+          fehler:
+            produkt.bestand <= 0
+              ? `„${produkt.name}" ist leider ausverkauft.`
+              : `Von „${produkt.name}" ${produkt.bestand === 1 ? "ist nur noch 1 Stück" : `sind nur noch ${produkt.bestand} Stück`} da.`,
+        };
+      }
+
       items.push({
         productId: produkt.id,
         variantId: null,
@@ -119,22 +149,65 @@ export async function bestellungAufgeben(daten: {
   if (items.length === 0)
     return { ok: false, fehler: "Die gewählten Produkte gibt es nicht mehr." };
 
-  // 4) Wer bestellt? Wenn angemeldet, hängen wir die Bestellung ans Konto.
+  // 4) Bestelllimit prüfen – auch das gehört auf den Server
+  const { limitCent } = await shopEinstellungen();
+  const gesamt = items.reduce((s, i) => s + i.menge * i.preisBeimKauf, 0);
+  if (limitCent > 0 && gesamt > limitCent) {
+    const euroText = (c: number) => (c / 100).toFixed(2).replace(".", ",");
+    return {
+      ok: false,
+      fehler: `Dein Korb liegt ${euroText(gesamt - limitCent)} € über dem Bestelllimit von ${euroText(limitCent)} €.`,
+    };
+  }
+
+  // 5) Wer bestellt? Wenn angemeldet, hängen wir die Bestellung ans Konto.
   const nutzer = await aktuellerNutzer();
 
-  // 5) Bestellung, Positionen und ersten Statuseintrag speichern
-  const bestellung = await prisma.order.create({
-    data: {
-      name,
-      klasse,
-      notiz,
-      userId: nutzer?.id ?? null,
-      status: "EINGEGANGEN",
-      zahlart,
-      zahlstatus: "OFFEN",
-      items: { create: items },
-      verlauf: { create: { status: "EINGEGANGEN" } },
-    },
+  // 6) Bestellung speichern und Bestände abziehen – zusammen, damit nicht
+  //    das eine ohne das andere passiert.
+  const bestellung = await prisma.$transaction(async (tx) => {
+    const neu = await tx.order.create({
+      data: {
+        name,
+        klasse,
+        notiz,
+        userId: nutzer?.id ?? null,
+        status: "EINGEGANGEN",
+        zahlart,
+        zahlstatus: "OFFEN",
+        ersatzRegel,
+        items: { create: items },
+        verlauf: { create: { status: "EINGEGANGEN" } },
+      },
+    });
+
+    for (const i of items) {
+      if (i.variantId) {
+        await tx.productVariant.updateMany({
+          where: { id: i.variantId, bestand: { not: null } },
+          data: { bestand: { decrement: i.menge } },
+        });
+      } else {
+        await tx.product.updateMany({
+          where: { id: i.productId, bestand: { not: null } },
+          data: { bestand: { decrement: i.menge } },
+        });
+      }
+    }
+
+    return neu;
+  });
+
+  // Gespeicherten Warenkorb leeren – sonst käme später eine Erinnerung
+  if (nutzer) {
+    await prisma.cart.deleteMany({ where: { userId: nutzer.id } });
+  }
+
+  await protokollieren({
+    wer: nutzer?.email ?? "Gast",
+    aktion: "Bestellung aufgegeben",
+    objekt: `Bestellung ${bestellung.id}`,
+    details: `${items.length} Positionen, ${(gesamt / 100).toFixed(2)} €`,
   });
 
   return { ok: true, orderId: bestellung.id };

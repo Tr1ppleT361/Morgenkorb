@@ -23,22 +23,22 @@ type Beschreibung = {
 
 export const STATUS_TEXTE: Record<Status, Beschreibung> = {
   EINGEGANGEN: {
-    titel: "Bestellung erhalten",
+    titel: "Bestellt",
     erklaerung: "Deine Bestellung ist angekommen und für morgen vorgemerkt.",
     farbe: "leise",
   },
   IN_BEARBEITUNG: {
-    titel: "Wird bearbeitet",
-    erklaerung: "Die Bestellung ist auf der Einkaufsliste.",
+    titel: "Eingekauft",
+    erklaerung: "Die Sachen sind besorgt.",
     farbe: "honig",
   },
   VERSENDET: {
-    titel: "Versendet",
-    erklaerung: "Eingekauft und eingepackt – die Sachen sind unterwegs.",
+    titel: "Bereit",
+    erklaerung: "Eingepackt und bereit zur Übergabe.",
     farbe: "ziegel",
   },
   ZUGESTELLT: {
-    titel: "Zugestellt",
+    titel: "Übergeben",
     erklaerung: "Übergeben. Guten Appetit!",
     farbe: "moos",
   },

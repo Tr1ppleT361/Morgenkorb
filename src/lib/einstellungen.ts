@@ -14,6 +14,10 @@ export const SCHLUESSEL = {
   start: "bestellStart",
   ende: "bestellEnde",
   aktiv: "bestellAktiv",
+  abholOrt: "abholOrt",
+  abholZeit: "abholZeit",
+  limitCent: "bestellLimitCent",
+  aenderFrist: "aenderFrist",
 } as const;
 
 export type Bestellzeiten = {
@@ -70,6 +74,73 @@ export const bestellzeiten = cache(async (): Promise<Bestellzeiten> => {
     aktiv: (map.get(SCHLUESSEL.aktiv) ?? "1") !== "0",
   };
 });
+
+/**
+ * Weitere Einstellungen: Abholinfos, Bestelllimit und bis wann Kunden ihre
+ * Bestellung selbst noch ändern dürfen.
+ */
+export type ShopEinstellungen = {
+  /** z. B. "Klassenraum 204" */
+  abholOrt: string;
+  /** z. B. "in der ersten großen Pause" */
+  abholZeit: string;
+  /** Höchstbetrag pro Bestellung in Cent. 0 = kein Limit. */
+  limitCent: number;
+  /** Bis wann darf der Kunde selbst ändern/stornieren? "20:00" */
+  aenderFrist: string;
+};
+
+export const shopEinstellungen = cache(async (): Promise<ShopEinstellungen> => {
+  let zeilen: { schluessel: string; wert: string }[] = [];
+  try {
+    zeilen = await prisma.setting.findMany({
+      where: {
+        schluessel: {
+          in: [
+            SCHLUESSEL.abholOrt,
+            SCHLUESSEL.abholZeit,
+            SCHLUESSEL.limitCent,
+            SCHLUESSEL.aenderFrist,
+          ],
+        },
+      },
+    });
+  } catch {
+    // Tabelle noch nicht da -> Startwerte
+  }
+  const map = new Map(zeilen.map((z) => [z.schluessel, z.wert]));
+
+  const limit = Number(map.get(SCHLUESSEL.limitCent) ?? "2000");
+  const frist = map.get(SCHLUESSEL.aenderFrist) ?? "";
+
+  return {
+    abholOrt: map.get(SCHLUESSEL.abholOrt) ?? "",
+    abholZeit: map.get(SCHLUESSEL.abholZeit) ?? "",
+    limitCent: Number.isFinite(limit) && limit >= 0 ? limit : 0,
+    // Leer bedeutet: dieselbe Zeit wie der Bestellschluss
+    aenderFrist: alsMinuten(frist) === null ? "" : frist,
+  };
+});
+
+export async function shopEinstellungenSpeichern(
+  e: ShopEinstellungen,
+): Promise<void> {
+  const werte: [string, string][] = [
+    [SCHLUESSEL.abholOrt, e.abholOrt],
+    [SCHLUESSEL.abholZeit, e.abholZeit],
+    [SCHLUESSEL.limitCent, String(e.limitCent)],
+    [SCHLUESSEL.aenderFrist, e.aenderFrist],
+  ];
+  await prisma.$transaction(
+    werte.map(([schluessel, wert]) =>
+      prisma.setting.upsert({
+        where: { schluessel },
+        update: { wert },
+        create: { schluessel, wert },
+      }),
+    ),
+  );
+}
 
 /** Speichert die Bestellzeiten. Wird nur vom Admin aufgerufen. */
 export async function bestellzeitenSpeichern(z: Bestellzeiten): Promise<void> {
