@@ -10,10 +10,18 @@ export function ZeitenFormular({
   start: startZeit,
   ende,
   aktiv,
+  abholOrt,
+  abholZeit,
+  limitCent,
+  aenderFrist,
 }: {
   start: string;
   ende: string;
   aktiv: boolean;
+  abholOrt: string;
+  abholZeit: string;
+  limitCent: number;
+  aenderFrist: string;
 }) {
   const [status, formAction, laeuft] = useActionState(
     bestellzeitenSetzen,
@@ -22,7 +30,7 @@ export function ZeitenFormular({
 
   return (
     <div className="karte p-4">
-      <h2 className="mb-1 font-titel text-lg font-bold">Bestellzeiten</h2>
+      <h2 className="mb-1 font-titel text-lg font-bold">Shop-Einstellungen</h2>
       <p className="mb-4 text-sm text-leise">
         In diesem Zeitfenster können deine Mitschüler bestellen.
       </p>
@@ -73,6 +81,73 @@ export function ZeitenFormular({
           </span>
         </label>
 
+        {/* Änderungsfrist */}
+        <div>
+          <label htmlFor="z-frist" className="mb-1 block text-sm font-medium">
+            Kunden dürfen selbst ändern bis
+          </label>
+          <input
+            id="z-frist"
+            name="aenderFrist"
+            type="time"
+            className="eingabe"
+            defaultValue={aenderFrist}
+          />
+          <p className="mt-1 text-xs text-leise">
+            Leer lassen = bis zum Bestellschluss. Danach können Bestellungen
+            nur noch von dir geändert werden.
+          </p>
+        </div>
+
+        {/* Bestelllimit */}
+        <div>
+          <label htmlFor="z-limit" className="mb-1 block text-sm font-medium">
+            Bestelllimit pro Person in €
+          </label>
+          <input
+            id="z-limit"
+            name="limit"
+            className="eingabe"
+            inputMode="decimal"
+            placeholder="20"
+            defaultValue={limitCent > 0 ? (limitCent / 100).toFixed(2).replace(".", ",") : ""}
+          />
+          <p className="mt-1 text-xs text-leise">
+            0 oder leer = kein Limit. Im Warenkorb steht dann „Noch X € bis zum
+            Bestelllimit".
+          </p>
+        </div>
+
+        {/* Abholinfos */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label htmlFor="z-ort" className="mb-1 block text-sm font-medium">
+              Abholort
+            </label>
+            <input
+              id="z-ort"
+              name="abholOrt"
+              className="eingabe"
+              placeholder="z. B. Klassenraum 204"
+              defaultValue={abholOrt}
+              maxLength={120}
+            />
+          </div>
+          <div>
+            <label htmlFor="z-abholzeit" className="mb-1 block text-sm font-medium">
+              Abholzeit
+            </label>
+            <input
+              id="z-abholzeit"
+              name="abholZeit"
+              className="eingabe"
+              placeholder="z. B. erste große Pause"
+              defaultValue={abholZeit}
+              maxLength={120}
+            />
+          </div>
+        </div>
+
         {status.fehler && (
           <p className="rounded-weich border border-beere/40 bg-beere/10 px-4 py-3 text-sm font-semibold text-beere">
             {status.fehler}
@@ -85,7 +160,7 @@ export function ZeitenFormular({
         )}
 
         <button type="submit" className="btn-primaer w-full" disabled={laeuft}>
-          {laeuft ? "Speichert…" : "Zeiten speichern"}
+          {laeuft ? "Speichert…" : "Einstellungen speichern"}
         </button>
       </form>
     </div>

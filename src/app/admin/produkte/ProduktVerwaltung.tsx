@@ -8,6 +8,7 @@ import {
   kategorieVeroeffentlichen,
   produktAktivUmschalten,
   produktLoeschen,
+  produktSchnellSpeichern,
   produktSpeichern,
   varianteAktivUmschalten,
   varianteLoeschen,
@@ -20,6 +21,7 @@ export type Variante = {
   name: string;
   preis: number;
   einkauf: number | null;
+  bestand: number | null;
   aktiv: boolean;
 };
 
@@ -28,6 +30,10 @@ export type Produkt = {
   name: string;
   preis: number;
   einkauf: number | null;
+  bestand: number | null;
+  merkmale: string | null;
+  zutaten: string | null;
+  allergene: string | null;
   bildUrl: string | null;
   aktiv: boolean;
   categoryId: number;
@@ -267,6 +273,20 @@ function ProduktZeile({
           )}
         </p>
         <p className="truncate text-sm text-leise">
+          {p.bestand !== null && (
+            <span
+              className={
+                "mr-1.5 rounded-full px-1.5 py-0.5 text-[0.65rem] font-bold " +
+                (p.bestand <= 0
+                  ? "bg-beere/12 text-beere"
+                  : p.bestand <= 10
+                    ? "bg-honigHell text-ziegel"
+                    : "bg-moos/12 text-moos")
+              }
+            >
+              {p.bestand <= 0 ? "leer" : `${p.bestand} St.`}
+            </span>
+          )}
           {euro(p.preis)}
           {p.einkauf && (
             <span className="text-xs">
@@ -278,6 +298,62 @@ function ProduktZeile({
           · {p.kategorie}
           {!p.aktiv && " · versteckt"}
         </p>
+      </div>
+
+      {/* Schnellbearbeitung: Preis und Bestand direkt in der Liste */}
+      <div className="flex shrink-0 items-center gap-1">
+        <label className="sr-only" htmlFor={`sp-${p.id}`}>
+          Preis von {p.name}
+        </label>
+        <input
+          id={`sp-${p.id}`}
+          className="w-[4.5rem] rounded-weich border border-linie bg-karte px-2 py-1.5 text-sm ziffern"
+          inputMode="decimal"
+          defaultValue={(p.preis / 100).toFixed(2).replace(".", ",")}
+          title="Preis in € – Enter zum Speichern"
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            const wert = Number(e.currentTarget.value.replace(",", "."));
+            if (!Number.isFinite(wert) || wert <= 0) {
+              onFehler("Ungültiger Preis.");
+              return;
+            }
+            starte(async () => {
+              const r = await produktSchnellSpeichern(p.id, {
+                preis: Math.round(wert * 100),
+              });
+              if (!r.ok && r.fehler) onFehler(r.fehler);
+              else onFehler("Preis gespeichert.");
+              router.refresh();
+            });
+          }}
+        />
+        <label className="sr-only" htmlFor={`sb-${p.id}`}>
+          Bestand von {p.name}
+        </label>
+        <input
+          id={`sb-${p.id}`}
+          className="w-14 rounded-weich border border-linie bg-karte px-2 py-1.5 text-sm ziffern"
+          inputMode="numeric"
+          placeholder="∞"
+          defaultValue={p.bestand ?? ""}
+          title="Bestand – leer heißt unbegrenzt, Enter zum Speichern"
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            const roh = e.currentTarget.value.trim();
+            const wert = roh === "" ? null : Number(roh);
+            if (wert !== null && (!Number.isInteger(wert) || wert < 0)) {
+              onFehler("Bestand muss eine ganze Zahl sein.");
+              return;
+            }
+            starte(async () => {
+              const r = await produktSchnellSpeichern(p.id, { bestand: wert });
+              if (!r.ok && r.fehler) onFehler(r.fehler);
+              else onFehler("Bestand gespeichert.");
+              router.refresh();
+            });
+          }}
+        />
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
@@ -454,6 +530,67 @@ function ProduktFormular({
           </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-3">
+          <Feld
+            id="p-bestand"
+            name="bestand"
+            label="Bestand"
+            zusatz="(leer = ∞)"
+            inputMode="numeric"
+            placeholder="unbegrenzt"
+            defaultValue={produkt?.bestand ?? ""}
+          />
+          <Feld
+            id="p-merkmale"
+            name="merkmale"
+            label="Merkmale"
+            zusatz="(Komma)"
+            placeholder="zuckerfrei, vegan"
+            defaultValue={produkt?.merkmale ?? ""}
+          />
+        </div>
+
+        {/* Zutaten und Allergene – kommen von dir, nicht aus dem Seed */}
+        <details className="rounded-weich border border-linie bg-karte p-3">
+          <summary className="cursor-pointer text-sm font-semibold">
+            Zutaten & Allergene
+          </summary>
+          <p className="mt-2 rounded-weich bg-honigHell px-3 py-2 text-xs text-ziegel">
+            Trag hier nur ein, was wirklich auf der Verpackung steht. Diese
+            Angaben werden im Shop mit dem Hinweis gezeigt, dass allein die
+            Verpackung verbindlich ist.
+          </p>
+          <div className="mt-3 space-y-3">
+            <div>
+              <label htmlFor="p-zutaten" className="mb-1 block text-sm font-medium">
+                Zutaten
+              </label>
+              <textarea
+                id="p-zutaten"
+                name="zutaten"
+                className="eingabe"
+                rows={2}
+                maxLength={800}
+                defaultValue={produkt?.zutaten ?? ""}
+                placeholder="Zucker, Kakaobutter, …"
+              />
+            </div>
+            <div>
+              <label htmlFor="p-allergene" className="mb-1 block text-sm font-medium">
+                Allergene
+              </label>
+              <input
+                id="p-allergene"
+                name="allergene"
+                className="eingabe"
+                maxLength={300}
+                defaultValue={produkt?.allergene ?? ""}
+                placeholder="Milch, Haselnüsse, Soja"
+              />
+            </div>
+          </div>
+        </details>
+
         <label className="flex items-center gap-3 py-2">
           <input
             type="checkbox"
@@ -515,6 +652,16 @@ function SortenFormular({
                 <p className="text-sm text-leise ziffern">
                   {euro(v.preis)}
                   {v.einkauf && ` (EK ${euro(v.einkauf)})`}
+                  {v.bestand !== null && (
+                    <span
+                      className={
+                        "ml-1.5 font-semibold " +
+                        (v.bestand <= 0 ? "text-beere" : "text-ziegel")
+                      }
+                    >
+                      · {v.bestand <= 0 ? "leer" : `${v.bestand} St.`}
+                    </span>
+                  )}
                 </p>
               </div>
               <button
@@ -565,9 +712,10 @@ function SortenFormular({
         <input type="hidden" name="productId" value={produkt.id} />
         <p className="etikett">Neue Sorte</p>
         <Feld id="v-name" name="name" label="Name der Sorte" placeholder="z. B. Exotic" required maxLength={40} />
-        <div className="grid grid-cols-2 gap-3">
-          <Feld id="v-einkauf" name="einkauf" label="Einkauf in €" zusatz="(optional)" inputMode="decimal" placeholder="1,29" />
-          <Feld id="v-preis" name="preis" label="Verkauf in €" inputMode="decimal" placeholder="1,50" required />
+        <div className="grid grid-cols-3 gap-3">
+          <Feld id="v-einkauf" name="einkauf" label="Einkauf €" zusatz="" inputMode="decimal" placeholder="1,29" />
+          <Feld id="v-preis" name="preis" label="Verkauf €" inputMode="decimal" placeholder="1,50" required />
+          <Feld id="v-bestand" name="bestand" label="Bestand" zusatz="" inputMode="numeric" placeholder="∞" />
         </div>
         {status.fehler && <Fehler text={status.fehler} />}
         <button type="submit" className="btn-primaer w-full" disabled={laeuft}>

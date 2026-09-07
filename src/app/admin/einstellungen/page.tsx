@@ -1,5 +1,5 @@
 /** Admin: Bestellzeiten einstellen. */
-import { bestellzeiten } from "@/lib/einstellungen";
+import { bestellzeiten, shopEinstellungen } from "@/lib/einstellungen";
 import { bestellfenster } from "@/lib/bestellschluss";
 import { config } from "@/config";
 import { ZeitenFormular } from "./ZeitenFormular";
@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function EinstellungenSeite() {
   const zeiten = await bestellzeiten();
+  const shop = await shopEinstellungen();
   const fenster = await bestellfenster();
 
   return (
@@ -35,6 +36,10 @@ export default async function EinstellungenSeite() {
         start={zeiten.start}
         ende={zeiten.ende}
         aktiv={zeiten.aktiv}
+        abholOrt={shop.abholOrt}
+        abholZeit={shop.abholZeit}
+        limitCent={shop.limitCent}
+        aenderFrist={shop.aenderFrist}
       />
 
       <div className="karte p-4 text-sm text-leise">

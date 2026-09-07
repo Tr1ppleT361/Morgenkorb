@@ -8,7 +8,12 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { nurAdmin } from "@/lib/auth";
 import { istStatus } from "@/lib/status";
-import { alsMinuten, bestellzeitenSpeichern } from "@/lib/einstellungen";
+import {
+  alsMinuten,
+  bestellzeitenSpeichern,
+  shopEinstellungenSpeichern,
+} from "@/lib/einstellungen";
+import { protokollieren, vergleich } from "@/lib/protokoll";
 
 /** Alle Admin-Seiten neu laden lassen. */
 function adminNeuLaden() {
@@ -63,6 +68,13 @@ export async function statusSetzen(
       data: { orderId, status, am: jetzt, notiz: notiz?.trim() || null },
     }),
   ]);
+
+  await protokollieren({
+    wer: (await nurAdmin()).email,
+    aktion: "Bestellstatus geändert",
+    objekt: `Bestellung ${orderId}`,
+    details: `auf ${status}`,
+  });
 
   adminNeuLaden();
   revalidatePath(`/bestellung/${orderId}`);
@@ -176,11 +188,44 @@ export async function produktSpeichern(
   if (bildUrl && !/^https?:\/\//i.test(bildUrl))
     return { fehler: "Die Bild-Adresse muss mit http:// oder https:// beginnen." };
 
-  const daten = { name, preis, einkauf, categoryId, bildUrl, aktiv };
+  const bestandRoh = String(formData.get("bestand") ?? "").trim();
+  const bestand = bestandRoh === "" ? null : Number(bestandRoh);
+  if (bestand !== null && (!Number.isInteger(bestand) || bestand < 0))
+    return { fehler: "Der Bestand muss eine ganze Zahl sein (leer = unbegrenzt)." };
+
+  const daten = {
+    name,
+    preis,
+    einkauf,
+    categoryId,
+    bildUrl,
+    aktiv,
+    bestand,
+    merkmale: String(formData.get("merkmale") ?? "").trim() || null,
+    zutaten: String(formData.get("zutaten") ?? "").trim() || null,
+    allergene: String(formData.get("allergene") ?? "").trim() || null,
+  };
 
   try {
-    if (id) await prisma.product.update({ where: { id }, data: daten });
-    else await prisma.product.create({ data: daten });
+    if (id) {
+      const vorher = await prisma.product.findUnique({ where: { id } });
+      await prisma.product.update({ where: { id }, data: daten });
+      if (vorher && vorher.preis !== preis) {
+        const admin = await nurAdmin();
+        await protokollieren({
+          wer: admin.email,
+          aktion: "Preis geändert",
+          objekt: `Produkt ${id} (${name})`,
+          details: vergleich(
+            "Preis",
+            `${(vorher.preis / 100).toFixed(2)} €`,
+            `${(preis / 100).toFixed(2)} €`,
+          ),
+        });
+      }
+    } else {
+      await prisma.product.create({ data: daten });
+    }
   } catch {
     return { fehler: `Es gibt schon ein Produkt mit dem Namen „${name}".` };
   }
@@ -223,9 +268,93 @@ export async function produktLoeschen(
 
 /** Produkt veröffentlichen bzw. verstecken. */
 export async function produktAktivUmschalten(id: number, aktiv: boolean) {
-  await nurAdmin();
-  await prisma.product.update({ where: { id }, data: { aktiv } });
+  const admin = await nurAdmin();
+  const p = await prisma.product.update({ where: { id }, data: { aktiv } });
+  await protokollieren({
+    wer: admin.email,
+    aktion: aktiv ? "Produkt veröffentlicht" : "Produkt versteckt",
+    objekt: `Produkt ${id} (${p.name})`,
+  });
   produkteNeuLaden();
+}
+
+/**
+ * Schnellbearbeitung direkt in der Liste: Preis, Bestand, Sichtbarkeit.
+ * Spart das Öffnen des großen Formulars.
+ */
+export async function produktSchnellSpeichern(
+  id: number,
+  werte: { preis?: number; bestand?: number | null; aktiv?: boolean },
+): Promise<{ ok: boolean; fehler?: string }> {
+  const admin = await nurAdmin();
+
+  const vorher = await prisma.product.findUnique({ where: { id } });
+  if (!vorher) return { ok: false, fehler: "Produkt nicht gefunden." };
+
+  if (werte.preis !== undefined && (!Number.isInteger(werte.preis) || werte.preis <= 0))
+    return { ok: false, fehler: "Ungültiger Preis." };
+  if (
+    werte.bestand !== undefined &&
+    werte.bestand !== null &&
+    (!Number.isInteger(werte.bestand) || werte.bestand < 0)
+  )
+    return { ok: false, fehler: "Ungültiger Bestand." };
+
+  await prisma.product.update({ where: { id }, data: werte });
+
+  const teile: string[] = [];
+  if (werte.preis !== undefined && werte.preis !== vorher.preis)
+    teile.push(vergleich("Preis", `${(vorher.preis / 100).toFixed(2)} €`, `${(werte.preis / 100).toFixed(2)} €`));
+  if (werte.bestand !== undefined && werte.bestand !== vorher.bestand)
+    teile.push(vergleich("Bestand", vorher.bestand ?? "unbegrenzt", werte.bestand ?? "unbegrenzt"));
+  if (werte.aktiv !== undefined && werte.aktiv !== vorher.aktiv)
+    teile.push(vergleich("Sichtbar", vorher.aktiv, werte.aktiv));
+
+  if (teile.length > 0) {
+    await protokollieren({
+      wer: admin.email,
+      aktion: "Produkt schnell bearbeitet",
+      objekt: `Produkt ${id} (${vorher.name})`,
+      details: teile.join(", "),
+    });
+  }
+
+  produkteNeuLaden();
+  return { ok: true };
+}
+
+/** Schnellbearbeitung für eine Sorte. */
+export async function varianteSchnellSpeichern(
+  id: number,
+  werte: { preis?: number; bestand?: number | null; aktiv?: boolean },
+): Promise<{ ok: boolean; fehler?: string }> {
+  const admin = await nurAdmin();
+  const vorher = await prisma.productVariant.findUnique({ where: { id } });
+  if (!vorher) return { ok: false, fehler: "Sorte nicht gefunden." };
+
+  if (werte.preis !== undefined && (!Number.isInteger(werte.preis) || werte.preis <= 0))
+    return { ok: false, fehler: "Ungültiger Preis." };
+
+  await prisma.productVariant.update({ where: { id }, data: werte });
+
+  await protokollieren({
+    wer: admin.email,
+    aktion: "Sorte bearbeitet",
+    objekt: `Sorte ${id} (${vorher.name})`,
+    details: [
+      werte.preis !== undefined && werte.preis !== vorher.preis
+        ? vergleich("Preis", `${(vorher.preis / 100).toFixed(2)} €`, `${(werte.preis / 100).toFixed(2)} €`)
+        : null,
+      werte.bestand !== undefined && werte.bestand !== vorher.bestand
+        ? vergleich("Bestand", vorher.bestand ?? "unbegrenzt", werte.bestand ?? "unbegrenzt")
+        : null,
+    ]
+      .filter(Boolean)
+      .join(", "),
+  });
+
+  produkteNeuLaden();
+  return { ok: true };
 }
 
 // -------------------------------------------------------------- Varianten
@@ -245,7 +374,12 @@ export async function varianteSpeichern(
   const einkaufRoh = String(formData.get("einkauf") ?? "").trim();
   const einkauf = einkaufRoh ? alsCent(einkaufRoh) : null;
 
+  const vBestandRoh = String(formData.get("bestand") ?? "").trim();
+  const vBestand = vBestandRoh === "" ? null : Number(vBestandRoh);
+
   if (!productId) return { fehler: "Kein Produkt angegeben." };
+  if (vBestand !== null && (!Number.isInteger(vBestand) || vBestand < 0))
+    return { fehler: "Der Bestand muss eine ganze Zahl sein." };
   if (!name) return { fehler: "Bitte einen Namen für die Sorte eingeben." };
   if (preis === null) return { fehler: "Bitte einen gültigen Preis eingeben." };
 
@@ -253,11 +387,11 @@ export async function varianteSpeichern(
     if (id)
       await prisma.productVariant.update({
         where: { id },
-        data: { name, preis, einkauf },
+        data: { name, preis, einkauf, bestand: vBestand },
       });
     else
       await prisma.productVariant.create({
-        data: { productId, name, preis, einkauf },
+        data: { productId, name, preis, einkauf, bestand: vBestand },
       });
   } catch {
     return { fehler: `Die Sorte „${name}" gibt es bei diesem Produkt schon.` };
@@ -402,9 +536,36 @@ export async function bestellzeitenSetzen(
   if (start === ende)
     return { fehler: "Start- und Endzeit dürfen nicht gleich sein." };
 
+  // Abholinfos, Limit und Änderungsfrist
+  const abholOrt = String(formData.get("abholOrt") ?? "").trim().slice(0, 120);
+  const abholZeit = String(formData.get("abholZeit") ?? "").trim().slice(0, 120);
+  const aenderFrist = String(formData.get("aenderFrist") ?? "").trim();
+  const limitText = String(formData.get("limit") ?? "").replace(",", ".").trim();
+  const limitEuro = limitText === "" ? 0 : Number(limitText);
+
+  if (!Number.isFinite(limitEuro) || limitEuro < 0)
+    return { fehler: "Das Bestelllimit muss eine Zahl sein (0 = kein Limit)." };
+  if (aenderFrist && alsMinuten(aenderFrist) === null)
+    return { fehler: "Die Änderungsfrist muss so aussehen: 19:30" };
+
+  const admin = await nurAdmin();
+
   await bestellzeitenSpeichern({ start, ende, aktiv });
+  await shopEinstellungenSpeichern({
+    abholOrt,
+    abholZeit,
+    limitCent: Math.round(limitEuro * 100),
+    aenderFrist,
+  });
+
+  await protokollieren({
+    wer: admin.email,
+    aktion: "Einstellungen geändert",
+    objekt: "Shop",
+    details: `Bestellzeit ${start}–${ende}, Limit ${limitEuro} €, Änderungsfrist ${aenderFrist || "= Bestellschluss"}`,
+  });
 
   revalidatePath("/", "layout");
   revalidatePath("/admin/einstellungen");
-  return { erfolg: "Bestellzeiten gespeichert." };
+  return { erfolg: "Einstellungen gespeichert." };
 }

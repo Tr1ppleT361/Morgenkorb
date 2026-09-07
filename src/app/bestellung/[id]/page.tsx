@@ -11,6 +11,9 @@ import { KorbZeichen } from "@/components/Logo";
 import { StatusVerlauf } from "@/components/StatusVerlauf";
 import { JetztBezahlen } from "@/components/JetztBezahlen";
 import { stripeEingerichtet } from "@/lib/stripe";
+import { ErneutBestellen } from "@/components/ErneutBestellen";
+import { aenderbarkeit } from "@/lib/aenderfrist";
+import { shopEinstellungen } from "@/lib/einstellungen";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +27,7 @@ export default async function Bestaetigung({
     bezahlt?: string;
     abgebrochen?: string;
     zahlfehler?: string;
+    geaendert?: string;
   }>;
 }) {
   const { id } = await params;
@@ -41,6 +45,8 @@ export default async function Bestaetigung({
 
   const summe = summeCent(bestellung.items);
   const karteMoeglich = stripeEingerichtet();
+  const darfAendern = await aenderbarkeit(bestellung);
+  const einstellungen = await shopEinstellungen();
   const stueck = bestellung.items.reduce((s, i) => s + i.menge, 0);
 
   const datum = new Intl.DateTimeFormat("de-DE", {
@@ -63,6 +69,12 @@ export default async function Bestaetigung({
           Deine Sachen sind morgen früh dabei.
         </p>
       </div>
+
+      {hinweise.geaendert && (
+        <div className="karte mt-5 border-moos/40 bg-moos/8 p-4 text-sm text-moos">
+          {hinweise.geaendert}
+        </div>
+      )}
 
       {/* Rückmeldung nach der Kartenzahlung */}
       {hinweise.bezahlt === "1" && bestellung.zahlstatus !== "BEZAHLT" && (
@@ -225,7 +237,52 @@ export default async function Bestaetigung({
         </dl>
       </div>
 
-      <Link href="/" className="btn-zweit mt-5 w-full">
+      {/* Wo und wann gibt es die Sachen? */}
+      {(einstellungen.abholOrt || einstellungen.abholZeit) && (
+        <div className="karte mt-5 flex items-start gap-3 p-4">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-weich bg-honigHell text-ziegel">
+            <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden>
+              <path
+                d="M10 18s6-4.6 6-9a6 6 0 1 0-12 0c0 4.4 6 9 6 9Z"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinejoin="round"
+              />
+              <circle cx="10" cy="8.8" r="2.2" stroke="currentColor" strokeWidth="1.7" />
+            </svg>
+          </span>
+          <div className="min-w-0">
+            <p className="font-semibold">Abholung</p>
+            <p className="text-sm text-leise">
+              {[einstellungen.abholOrt, einstellungen.abholZeit]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Ändern / stornieren, solange erlaubt */}
+      {darfAendern.erlaubt && (
+        <Link
+          href={`/bestellung/${bestellung.id}/aendern`}
+          className="btn-zweit mt-5 w-full"
+        >
+          Ändern oder stornieren (bis {darfAendern.frist} Uhr)
+        </Link>
+      )}
+
+      <div className="mt-3">
+        <ErneutBestellen
+          artikel={bestellung.items.map((i) => ({
+            productId: i.productId,
+            variantId: i.variantId,
+            menge: i.menge,
+          }))}
+        />
+      </div>
+
+      <Link href="/" className="btn-zweit mt-3 w-full">
         Noch etwas bestellen
       </Link>
 

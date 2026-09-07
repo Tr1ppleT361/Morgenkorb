@@ -11,6 +11,7 @@ import { config } from "@/config";
 import { statusText, STATUS_KLASSEN, statusStufe } from "@/lib/status";
 import { STATUS_REIHE } from "@/lib/status";
 import { abmelden } from "./actions";
+import { ErneutBestellen } from "@/components/ErneutBestellen";
 
 export const dynamic = "force-dynamic";
 
@@ -142,10 +143,24 @@ export default async function KontoSeite() {
 
                   <p className="mt-2.5 truncate text-sm text-leise">
                     {b.items
-                      .map((i) => `${i.menge}× ${i.product.name}`)
+                      .map(
+                        (i) =>
+                          `${i.menge}× ${i.product.name}${i.variantName ? ` (${i.variantName})` : ""}`,
+                      )
                       .join(", ")}
                   </p>
                 </Link>
+
+                <div className="border-t border-linie px-4 py-2.5">
+                  <ErneutBestellen
+                    klein
+                    artikel={b.items.map((i) => ({
+                      productId: i.productId,
+                      variantId: i.variantId,
+                      menge: i.menge,
+                    }))}
+                  />
+                </div>
               </li>
             );
           })}

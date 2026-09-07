@@ -26,6 +26,10 @@ export default async function ProdukteSeite() {
         name: p.name,
         preis: p.preis,
         einkauf: p.einkauf,
+        bestand: p.bestand,
+        merkmale: p.merkmale,
+        zutaten: p.zutaten,
+        allergene: p.allergene,
         bildUrl: p.bildUrl,
         aktiv: p.aktiv,
         categoryId: p.categoryId,
@@ -35,6 +39,7 @@ export default async function ProdukteSeite() {
           name: v.name,
           preis: v.preis,
           einkauf: v.einkauf,
+          bestand: v.bestand,
           aktiv: v.aktiv,
         })),
       }))}
