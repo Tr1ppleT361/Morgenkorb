@@ -20,8 +20,14 @@ import { basisAdresse } from "@/lib/stripe";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** So viele Minuten vor Schluss wird erinnert. */
-const VORLAUF_MINUTEN = 60;
+/**
+ * Wie kurz vor Bestellschluss darf erinnert werden?
+ *
+ * Großzügig gewählt, weil der Hobby-Plan von Vercel nur einen Cron-Lauf pro
+ * Tag zulässt (siehe vercel.json). Der Lauf um 19:00 deutscher Zeit trifft
+ * damit jeden Bestellschluss zwischen 19:00 und 23:00 Uhr.
+ */
+const VORLAUF_MINUTEN = 240;
 
 export async function GET(anfrage: Request) {
   // Nur Vercel-Cron (oder wer das Geheimnis kennt) darf hier rein
@@ -35,7 +41,7 @@ export async function GET(anfrage: Request) {
 
   const fenster = await bestellfenster();
 
-  // Nur im richtigen Zeitfenster erinnern
+  // Nur erinnern, solange noch bestellt werden kann und der Schluss naht
   if (!fenster.offen || fenster.minutenRest > VORLAUF_MINUTEN) {
     return NextResponse.json({
       erinnert: 0,

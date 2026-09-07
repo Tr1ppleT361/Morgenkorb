@@ -1,8 +1,10 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
+      "//": "Der Hobby-Plan von Vercel erlaubt nur EINEN Cron-Lauf pro Tag. Deshalb läuft die Erinnerung einmal täglich um 17:00 UTC – das sind 19:00 Uhr deutscher Sommerzeit, also eine Stunde vor dem Standard-Bestellschluss um 20:00 Uhr. Mit dem Pro-Plan kannst du hier z. B. '*/15 * * * *' eintragen, dann trifft die Erinnerung die Uhrzeit genauer.",
       "path": "/api/cron/erinnerung",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 17 * * *"
     }
   ]
 }
